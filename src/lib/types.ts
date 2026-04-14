@@ -27,6 +27,14 @@ export interface ExtractedImage {
   pngData: Uint8Array;
 }
 
+export interface WizardFile {
+  id: string;
+  stack: PageStack;
+  name: string;
+  pageCount: number;
+  fileSize: number;
+}
+
 export interface ImagePosition {
   imageIndex: number;
   bbox: [number, number, number, number];
