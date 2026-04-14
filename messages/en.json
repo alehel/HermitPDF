@@ -138,6 +138,11 @@
     "back": "Back",
     "remove": "Remove file"
   },
+  "footer": {
+    "copyright": "\u00a9 {year}",
+    "builtIn": "Built in Norway 🇳🇴, hosted in Europe 🇪🇺",
+    "sourceCode": "Source Code"
+  },
   "extractImagesWizard": {
     "title": "Extract Images",
     "dropTitle": "Drop a PDF file here",

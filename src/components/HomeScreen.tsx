@@ -13,6 +13,7 @@ import {
   WorkbenchIcon,
   ArrowRightIcon,
 } from "./Icons";
+import { Footer } from "./Footer";
 
 function ThemeToggle() {
   const t = useTranslations("homeScreen");
@@ -136,6 +137,8 @@ export function HomeScreen() {
           <ArrowRightIcon className="h-5 w-5 text-white/40 transition-transform group-hover:translate-x-1" />
         </Link>
       </main>
+
+      <Footer />
     </div>
   );
 }
