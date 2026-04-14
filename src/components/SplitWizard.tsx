@@ -1,23 +1,17 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import Image from "next/image";
 import { useTranslations } from "next-intl";
-import { Link } from "@/i18n/navigation";
-import { useTheme } from "./ThemeProvider";
-import {
-  MoonIcon,
-  SunIcon,
-  ScissorsIcon,
-  ArrowLeftIcon,
-  TrashIcon,
-  FileDocIcon,
-  DownloadIcon,
-  PlusCircleIcon,
-} from "./Icons";
+import { ScissorsIcon, TrashIcon, PlusCircleIcon } from "./Icons";
 import { DropZone } from "./DropZone";
+import { DismissibleBanner } from "./DismissibleBanner";
+import { WizardHeader } from "./WizardHeader";
+import { WizardTitle } from "./WizardTitle";
+import { FileCard } from "./FileCard";
+import { WizardFooter } from "./WizardFooter";
 import { PdfThumbnail } from "./PdfThumbnail";
 import { PageStack } from "@/lib/types";
+import { formatSize } from "@/lib/formatSize";
 import { ingestDocument } from "@/lib/pdfIngest";
 import { exportMergedPdf, downloadPdf } from "@/lib/pdfExport";
 import { releaseDoc } from "@/lib/pdfStore";
@@ -42,12 +36,6 @@ interface PageRange {
   to: number;
 }
 
-function formatSize(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-}
-
 function isRangeValid(range: PageRange, pageCount: number): boolean {
   return (
     range.from >= 1 &&
@@ -59,39 +47,11 @@ function isRangeValid(range: PageRange, pageCount: number): boolean {
 }
 
 /* ------------------------------------------------------------------ */
-/*  Dismissible banner                                                  */
-/* ------------------------------------------------------------------ */
-
-function Banner({
-  message,
-  onDismiss,
-}: {
-  message: string;
-  onDismiss: () => void;
-}) {
-  const t = useTranslations("splitWizard");
-  return (
-    <div className="flex items-center justify-between bg-accent px-4 py-2">
-      <p className="text-xs text-foreground">{message}</p>
-      <button
-        type="button"
-        onClick={onDismiss}
-        className="ml-4 shrink-0 text-xs font-medium text-primary hover:underline"
-      >
-        {t("dismiss")}
-      </button>
-    </div>
-  );
-}
-
-/* ------------------------------------------------------------------ */
 /*  Main component                                                      */
 /* ------------------------------------------------------------------ */
 
 export function SplitWizard() {
   const t = useTranslations("splitWizard");
-  const { theme, toggleTheme } = useTheme();
-
   const [file, setFile] = useState<SplitFile | null>(null);
   const [ranges, setRanges] = useState<PageRange[]>([]);
   const [rejectedFiles, setRejectedFiles] = useState<string[]>([]);
@@ -327,76 +287,34 @@ export function SplitWizard() {
     />
   );
 
-  /* ---- Header ---- */
-  const header = (
-    <header className="flex items-center gap-3 border-b border-border px-6 py-4">
-      <Link
-        href="/"
-        className="rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-border hover:text-foreground"
-        title={t("back")}
-      >
-        <ArrowLeftIcon />
-      </Link>
-      <Link href="/">
-        <Image
-          src={
-            theme === "dark"
-              ? "/hermitpdf-full-dark.svg"
-              : "/hermitpdf-full.svg"
-          }
-          alt="HermitPDF"
-          width={160}
-          height={23}
-        />
-      </Link>
-      <div className="ml-auto">
-        <button
-          type="button"
-          onClick={toggleTheme}
-          className="rounded-lg p-2 text-muted-foreground transition-colors hover:bg-border hover:text-foreground"
-          title="Toggle theme"
-        >
-          {theme === "light" ? <MoonIcon /> : <SunIcon />}
-        </button>
-      </div>
-    </header>
-  );
-
-  const wizardTitle = (
-    <div className="mb-6 flex items-center justify-center gap-2">
-      <div className="flex h-7 w-7 items-center justify-center rounded-md bg-accent text-primary">
-        <ScissorsIcon className="!h-4 !w-4" />
-      </div>
-      <h1 className="text-lg font-medium text-foreground">{t("title")}</h1>
-    </div>
-  );
-
   /* ================================================================ */
   /*  Empty state                                                      */
   /* ================================================================ */
   if (!file) {
     return (
       <div className="flex min-h-screen flex-col bg-background">
-        {header}
+        <WizardHeader />
         {fileInput}
 
         {rejectedFiles.length > 0 && (
-          <Banner
+          <DismissibleBanner
             message={t("rejectedFiles", { files: rejectedFiles.join(", ") })}
+            dismissLabel={t("dismiss")}
             onDismiss={() => setRejectedFiles([])}
           />
         )}
         {passwordProtectedFiles.length > 0 && (
-          <Banner
+          <DismissibleBanner
             message={t("passwordProtectedFiles", {
               files: passwordProtectedFiles.join(", "),
             })}
+            dismissLabel={t("dismiss")}
             onDismiss={() => setPasswordProtectedFiles([])}
           />
         )}
 
         <main className="flex flex-1 flex-col items-center justify-center px-6 pb-16">
-          {wizardTitle}
+          <WizardTitle icon={<ScissorsIcon className="!h-4 !w-4" />} title={t("title")} />
           <DropZone
             title={t("dropTitle")}
             subtitle={t("dropSubtitle")}
@@ -417,51 +335,36 @@ export function SplitWizard() {
   /* ================================================================ */
   return (
     <div className="flex min-h-screen flex-col bg-background">
-      {header}
+      <WizardHeader />
       {fileInput}
 
       {rejectedFiles.length > 0 && (
-        <Banner
+        <DismissibleBanner
           message={t("rejectedFiles", { files: rejectedFiles.join(", ") })}
+          dismissLabel={t("dismiss")}
           onDismiss={() => setRejectedFiles([])}
         />
       )}
       {passwordProtectedFiles.length > 0 && (
-        <Banner
+        <DismissibleBanner
           message={t("passwordProtectedFiles", {
             files: passwordProtectedFiles.join(", "),
           })}
+          dismissLabel={t("dismiss")}
           onDismiss={() => setPasswordProtectedFiles([])}
         />
       )}
 
       <main className="flex flex-1 flex-col items-center px-6 py-8">
         <div className="w-full max-w-xl">
-          {wizardTitle}
+          <WizardTitle icon={<ScissorsIcon className="!h-4 !w-4" />} title={t("title")} />
 
-          {/* File card */}
-          <div className="group flex items-center gap-3 rounded-xl border border-border bg-card p-4">
-            <div className="text-primary">
-              <FileDocIcon />
-            </div>
-            <div className="min-w-0 flex-1">
-              <p className="truncate text-sm font-medium text-foreground">
-                {file.name}
-              </p>
-              <p className="text-xs text-muted-foreground">
-                {t("pageCount", { count: file.pageCount })} &middot;{" "}
-                {formatSize(file.fileSize)}
-              </p>
-            </div>
-            <button
-              type="button"
-              onClick={handleRemove}
-              className="rounded-lg p-1.5 text-muted-foreground opacity-0 transition-all hover:bg-red-500/10 hover:text-red-500 group-hover:opacity-100"
-              title={t("remove")}
-            >
-              <TrashIcon />
-            </button>
-          </div>
+          <FileCard
+            name={file.name}
+            subtitle={`${t("pageCount", { count: file.pageCount })} \u00b7 ${formatSize(file.fileSize)}`}
+            onRemove={handleRemove}
+            removeTitle={t("remove")}
+          />
 
           {/* Range editor */}
           <div className="mt-6">
@@ -589,26 +492,12 @@ export function SplitWizard() {
         </div>
       </main>
 
-      {/* Footer */}
-      <footer className="border-t border-border bg-card px-6 py-4">
-        <div className="mx-auto flex max-w-xl items-center justify-between">
-          <div className="text-sm text-muted-foreground">
-            <span className="font-medium text-foreground">
-              {validRanges.length}
-            </span>{" "}
-            {t("rangesCount", { count: validRanges.length })}
-          </div>
-          <button
-            type="button"
-            onClick={handleSplit}
-            disabled={isSplitting || validRanges.length === 0}
-            className="flex items-center gap-2 rounded-xl bg-primary px-6 py-3 font-medium text-white transition-all hover:shadow-lg disabled:opacity-60"
-          >
-            <DownloadIcon />
-            {isSplitting ? t("splitting") : t("splitAndDownload")}
-          </button>
-        </div>
-      </footer>
+      <WizardFooter
+        statusText={<><span className="font-medium text-foreground">{validRanges.length}</span>{" "}{t("rangesCount", { count: validRanges.length })}</>}
+        buttonLabel={isSplitting ? t("splitting") : t("splitAndDownload")}
+        onButtonClick={handleSplit}
+        disabled={isSplitting || validRanges.length === 0}
+      />
     </div>
   );
 }

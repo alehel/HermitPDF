@@ -138,6 +138,11 @@
     "back": "Back",
     "remove": "Remove file"
   },
+  "common": {
+    "dismiss": "Dismiss",
+    "back": "Back",
+    "toggleTheme": "Toggle theme"
+  },
   "footer": {
     "copyright": "\u00a9 {year}",
     "builtIn": "Built in Norway 🇳🇴, hosted in Europe 🇪🇺",

@@ -1,23 +1,16 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import Image from "next/image";
 import { useTranslations } from "next-intl";
-import { Link } from "@/i18n/navigation";
-import { useTheme } from "./ThemeProvider";
-import {
-  MoonIcon,
-  SunIcon,
-  MergeIcon,
-  ArrowLeftIcon,
-  GripIcon,
-  TrashIcon,
-  FileDocIcon,
-  DownloadIcon,
-  PlusCircleIcon,
-} from "./Icons";
+import { MergeIcon, PlusCircleIcon } from "./Icons";
 import { DropZone } from "./DropZone";
+import { DismissibleBanner } from "./DismissibleBanner";
+import { WizardHeader } from "./WizardHeader";
+import { WizardTitle } from "./WizardTitle";
+import { FileCard } from "./FileCard";
+import { WizardFooter } from "./WizardFooter";
 import { PageStack } from "@/lib/types";
+import { formatSize } from "@/lib/formatSize";
 import { ingestDocument } from "@/lib/pdfIngest";
 import { exportMergedPdf, downloadPdf } from "@/lib/pdfExport";
 import { releaseDoc } from "@/lib/pdfStore";
@@ -36,45 +29,12 @@ interface MergeFile {
   fileSize: number;
 }
 
-function formatSize(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-}
-
-/* ------------------------------------------------------------------ */
-/*  Dismissible banner (local — avoids coupling to documentPanel i18n) */
-/* ------------------------------------------------------------------ */
-
-function Banner({
-  message,
-  onDismiss,
-}: {
-  message: string;
-  onDismiss: () => void;
-}) {
-  const t = useTranslations("mergeWizard");
-  return (
-    <div className="flex items-center justify-between bg-accent px-4 py-2">
-      <p className="text-xs text-foreground">{message}</p>
-      <button
-        type="button"
-        onClick={onDismiss}
-        className="ml-4 shrink-0 text-xs font-medium text-primary hover:underline"
-      >
-        {t("dismiss")}
-      </button>
-    </div>
-  );
-}
-
 /* ------------------------------------------------------------------ */
 /*  Main component                                                      */
 /* ------------------------------------------------------------------ */
 
 export function MergeWizard() {
   const t = useTranslations("mergeWizard");
-  const { theme, toggleTheme } = useTheme();
 
   const [files, setFiles] = useState<MergeFile[]>([]);
   const [rejectedFiles, setRejectedFiles] = useState<string[]>([]);
@@ -276,52 +236,11 @@ export function MergeWizard() {
     />
   );
 
-  /* ---- Header (shared by both states) ---- */
-  const header = (
-    <>
-    <header className="flex items-center gap-3 border-b border-border px-6 py-4">
-      <Link
-        href="/"
-        className="rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-border hover:text-foreground"
-        title={t("back")}
-      >
-        <ArrowLeftIcon />
-      </Link>
-      <Link href="/">
-        <Image
-          src={theme === "dark" ? "/hermitpdf-full-dark.svg" : "/hermitpdf-full.svg"}
-          alt="HermitPDF"
-          width={160}
-          height={23}
-        />
-      </Link>
-      <div className="ml-auto">
-        <button
-          type="button"
-          onClick={toggleTheme}
-          className="rounded-lg p-2 text-muted-foreground transition-colors hover:bg-border hover:text-foreground"
-          title="Toggle theme"
-        >
-          {theme === "light" ? <MoonIcon /> : <SunIcon />}
-        </button>
-      </div>
-    </header>
-    </>
-  );
-
-  const wizardTitle = (
-    <div className="mb-6 flex items-center justify-center gap-2">
-      <div className="flex h-7 w-7 items-center justify-center rounded-md bg-accent text-primary">
-        <MergeIcon className="!h-4 !w-4" />
-      </div>
-      <h1 className="text-lg font-medium text-foreground">{t("title")}</h1>
-      {files.length > 0 && (
-        <span className="rounded-full bg-accent px-2 py-0.5 text-xs font-medium text-primary">
-          {t("filesCount", { count: files.length })}
-        </span>
-      )}
-    </div>
-  );
+  const wizardTitleBadge = files.length > 0 ? (
+    <span className="rounded-full bg-accent px-2 py-0.5 text-xs font-medium text-primary">
+      {t("filesCount", { count: files.length })}
+    </span>
+  ) : undefined;
 
   /* ================================================================ */
   /*  Empty state                                                      */
@@ -329,27 +248,28 @@ export function MergeWizard() {
   if (files.length === 0) {
     return (
       <div className="flex min-h-screen flex-col bg-background">
-        {header}
+        <WizardHeader />
         {fileInput}
 
-        {/* Error banners */}
         {rejectedFiles.length > 0 && (
-          <Banner
+          <DismissibleBanner
             message={t("rejectedFiles", { files: rejectedFiles.join(", ") })}
+            dismissLabel={t("dismiss")}
             onDismiss={() => setRejectedFiles([])}
           />
         )}
         {passwordProtectedFiles.length > 0 && (
-          <Banner
+          <DismissibleBanner
             message={t("passwordProtectedFiles", {
               files: passwordProtectedFiles.join(", "),
             })}
+            dismissLabel={t("dismiss")}
             onDismiss={() => setPasswordProtectedFiles([])}
           />
         )}
 
         <main className="flex flex-1 flex-col items-center justify-center px-6 pb-16">
-          {wizardTitle}
+          <WizardTitle icon={<MergeIcon className="!h-4 !w-4" />} title={t("title")} badge={wizardTitleBadge} />
           <DropZone
             title={t("dropTitle")}
             subtitle={t("dropSubtitle")}
@@ -370,29 +290,29 @@ export function MergeWizard() {
   /* ================================================================ */
   return (
     <div className="flex min-h-screen flex-col bg-background">
-      {header}
+      <WizardHeader />
       {fileInput}
 
-      {/* Error banners */}
       {rejectedFiles.length > 0 && (
-        <Banner
+        <DismissibleBanner
           message={t("rejectedFiles", { files: rejectedFiles.join(", ") })}
+          dismissLabel={t("dismiss")}
           onDismiss={() => setRejectedFiles([])}
         />
       )}
       {passwordProtectedFiles.length > 0 && (
-        <Banner
+        <DismissibleBanner
           message={t("passwordProtectedFiles", {
             files: passwordProtectedFiles.join(", "),
           })}
+          dismissLabel={t("dismiss")}
           onDismiss={() => setPasswordProtectedFiles([])}
         />
       )}
 
-      {/* File list */}
       <main className="flex flex-1 flex-col items-center px-6 py-8">
         <div className="w-full max-w-xl">
-          {wizardTitle}
+          <WizardTitle icon={<MergeIcon className="!h-4 !w-4" />} title={t("title")} badge={wizardTitleBadge} />
           <p className="mb-3 text-xs font-medium uppercase tracking-widest text-muted-foreground">
             {t("dragToReorder")}
           </p>
@@ -405,61 +325,34 @@ export function MergeWizard() {
             onDrop={sortableDrop}
           >
             {files.map((file, i) => (
-              <div
+              <FileCard
                 key={file.id}
-                data-merge-item
-                draggable
-                onDragStart={(e) => {
-                  e.dataTransfer.setData("text/x-merge-index", String(i));
-                  handleItemDragStart(i, e);
+                name={file.name}
+                subtitle={`${t("pageCount", { count: file.pageCount })} \u00b7 ${formatSize(file.fileSize)}`}
+                onRemove={() => handleRemove(file.id)}
+                extraProps={{ "data-merge-item": true } as React.HTMLAttributes<HTMLDivElement>}
+                dragHandle={{
+                  onDragStart: (e) => {
+                    e.dataTransfer.setData("text/x-merge-index", String(i));
+                    handleItemDragStart(i, e);
+                  },
+                  onDragEnd: handleItemDragEnd,
                 }}
-                onDragEnd={handleItemDragEnd}
+                orderBadge={
+                  <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-accent text-xs font-medium text-primary">
+                    {i + 1}
+                  </span>
+                }
                 style={getItemStyle(i)}
                 className={`group flex items-center gap-3 rounded-xl border bg-card p-4 transition-all ${
                   dragIndex === i
                     ? "border-primary opacity-0"
                     : "border-border hover:border-primary/40 hover:shadow-sm"
                 }`}
-              >
-                {/* Drag handle */}
-                <div className="cursor-grab text-muted-foreground/50 transition-colors hover:text-muted-foreground active:cursor-grabbing">
-                  <GripIcon />
-                </div>
-
-                {/* Order badge */}
-                <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-accent text-xs font-medium text-primary">
-                  {i + 1}
-                </span>
-
-                {/* File icon */}
-                <div className="text-primary">
-                  <FileDocIcon />
-                </div>
-
-                {/* File info */}
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-medium text-foreground">
-                    {file.name}
-                  </p>
-                  <p className="text-xs text-muted-foreground">
-                    {t("pageCount", { count: file.pageCount })} &middot;{" "}
-                    {formatSize(file.fileSize)}
-                  </p>
-                </div>
-
-                {/* Remove button */}
-                <button
-                  type="button"
-                  onClick={() => handleRemove(file.id)}
-                  className="rounded-lg p-1.5 text-muted-foreground opacity-0 transition-all hover:bg-red-500/10 hover:text-red-500 group-hover:opacity-100"
-                >
-                  <TrashIcon />
-                </button>
-              </div>
+              />
             ))}
           </div>
 
-          {/* Add more files */}
           <button
             type="button"
             onClick={() => fileInputRef.current?.click()}
@@ -478,24 +371,12 @@ export function MergeWizard() {
         </div>
       </main>
 
-      {/* Footer */}
-      <footer className="border-t border-border bg-card px-6 py-4">
-        <div className="mx-auto flex max-w-xl items-center justify-between">
-          <div className="text-sm text-muted-foreground">
-            <span className="font-medium text-foreground">{totalPages}</span>{" "}
-            {t("pagesTotal")}
-          </div>
-          <button
-            type="button"
-            onClick={handleMerge}
-            disabled={isMerging}
-            className="flex items-center gap-2 rounded-xl bg-primary px-6 py-3 font-medium text-white transition-all hover:shadow-lg disabled:opacity-60"
-          >
-            <DownloadIcon />
-            {isMerging ? t("merging") : t("mergeAndDownload")}
-          </button>
-        </div>
-      </footer>
+      <WizardFooter
+        statusText={<><span className="font-medium text-foreground">{totalPages}</span>{" "}{t("pagesTotal")}</>}
+        buttonLabel={isMerging ? t("merging") : t("mergeAndDownload")}
+        onButtonClick={handleMerge}
+        disabled={isMerging}
+      />
     </div>
   );
 }
