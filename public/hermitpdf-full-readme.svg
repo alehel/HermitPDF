@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 269 76" width="269" height="76">
+  <rect x="0" y="0" width="269" height="76" rx="14" ry="14" fill="#1C1E24"/>
+  <rect x="10" y="10" width="56" height="56" rx="12" ry="12" fill="#D85A30"/>
+  <path d="M38 56 C24 56 18 48 18 36 C18 24 26 18 38 18 C50 18 58 26 58 38 C58 48 52 52 44 52 C36 52 32 46 32 40 C32 34 36 30 40 30 C46 30 48 34 48 38" fill="none" stroke="#FFFFFF" stroke-width="3.2" stroke-linecap="round"/>
+  <text x="78" y="50" font-family="'Poppins', sans-serif" font-size="36" font-weight="500" letter-spacing="-0.5">
+    <tspan fill="#FFFFFF">Hermit</tspan><tspan fill="#D85A30">PDF</tspan>
+  </text>
+</svg>
