@@ -35,6 +35,7 @@ import {
 interface MenuAction {
   label: string;
   onClick: () => void;
+  icon?: React.ComponentType;
 }
 
 function DropdownIconButton({
