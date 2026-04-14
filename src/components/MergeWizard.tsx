@@ -6,7 +6,7 @@ import { MergeIcon, PlusCircleIcon } from "./Icons";
 import { DropZone } from "./DropZone";
 import { DismissibleBanner } from "./DismissibleBanner";
 import { WizardHeader } from "./WizardHeader";
-import { WizardTitle } from "./WizardTitle";
+import { WizardContainer } from "./WizardContainer";
 import { FileCard } from "./FileCard";
 import { WizardFooter } from "./WizardFooter";
 import { WizardFile } from "@/lib/types";
@@ -179,8 +179,7 @@ export function MergeWizard() {
           />
         )}
 
-        <main className="flex flex-1 flex-col items-center justify-center px-6 pb-16">
-          <WizardTitle icon={<MergeIcon className="!h-4 !w-4" />} title={t("title")} badge={wizardTitleBadge} />
+        <WizardContainer icon={<MergeIcon className="!h-4 !w-4" />} title={t("title")} badge={wizardTitleBadge} empty>
           <DropZone
             title={t("dropTitle")}
             subtitle={t("dropSubtitle")}
@@ -191,7 +190,7 @@ export function MergeWizard() {
             onDrop={handleDropZoneDrop}
             isDragOver={isDragOver}
           />
-        </main>
+        </WizardContainer>
       </div>
     );
   }
@@ -221,9 +220,7 @@ export function MergeWizard() {
         />
       )}
 
-      <main className="flex flex-1 flex-col items-center px-6 py-8">
-        <div className="w-full max-w-xl">
-          <WizardTitle icon={<MergeIcon className="!h-4 !w-4" />} title={t("title")} badge={wizardTitleBadge} />
+      <WizardContainer icon={<MergeIcon className="!h-4 !w-4" />} title={t("title")} badge={wizardTitleBadge}>
           <p className="mb-3 text-xs font-medium uppercase tracking-widest text-muted-foreground">
             {t("dragToReorder")}
           </p>
@@ -279,8 +276,7 @@ export function MergeWizard() {
             <PlusCircleIcon />
             {t("addMoreFiles")}
           </button>
-        </div>
-      </main>
+      </WizardContainer>
 
       <WizardFooter
         statusText={<><span className="font-medium text-foreground">{totalPages}</span>{" "}{t("pagesTotal")}</>}

@@ -6,7 +6,7 @@ import { ScissorsIcon, TrashIcon, PlusCircleIcon } from "./Icons";
 import { DropZone } from "./DropZone";
 import { DismissibleBanner } from "./DismissibleBanner";
 import { WizardHeader } from "./WizardHeader";
-import { WizardTitle } from "./WizardTitle";
+import { WizardContainer } from "./WizardContainer";
 import { FileCard } from "./FileCard";
 import { WizardFooter } from "./WizardFooter";
 import { PdfThumbnail } from "./PdfThumbnail";
@@ -227,8 +227,7 @@ export function SplitWizard() {
           />
         )}
 
-        <main className="flex flex-1 flex-col items-center justify-center px-6 pb-16">
-          <WizardTitle icon={<ScissorsIcon className="!h-4 !w-4" />} title={t("title")} />
+        <WizardContainer icon={<ScissorsIcon className="!h-4 !w-4" />} title={t("title")} empty>
           <DropZone
             title={t("dropTitle")}
             subtitle={t("dropSubtitle")}
@@ -239,7 +238,7 @@ export function SplitWizard() {
             onDrop={handleDropZoneDrop}
             isDragOver={isDragOver}
           />
-        </main>
+        </WizardContainer>
       </div>
     );
   }
@@ -269,10 +268,7 @@ export function SplitWizard() {
         />
       )}
 
-      <main className="flex flex-1 flex-col items-center px-6 py-8">
-        <div className="w-full max-w-xl">
-          <WizardTitle icon={<ScissorsIcon className="!h-4 !w-4" />} title={t("title")} />
-
+      <WizardContainer icon={<ScissorsIcon className="!h-4 !w-4" />} title={t("title")}>
           <FileCard
             name={file.name}
             subtitle={`${t("pageCount", { count: file.pageCount })} \u00b7 ${formatSize(file.fileSize)}`}
@@ -403,8 +399,7 @@ export function SplitWizard() {
 
             <p className="mt-3 text-xs text-muted-foreground">{t("splitInfo")}</p>
           </div>
-        </div>
-      </main>
+      </WizardContainer>
 
       <WizardFooter
         statusText={<><span className="font-medium text-foreground">{validRanges.length}</span>{" "}{t("rangesCount", { count: validRanges.length })}</>}
