@@ -157,6 +157,10 @@
     "onlyOneFile": "Only one file can be processed at a time. Using the first PDF.",
     "dismiss": "Dismiss",
     "back": "Back",
-    "remove": "Remove file"
+    "remove": "Remove file",
+    "imagesFound": "{count, plural, =1 {1 image found} other {# images found}}",
+    "imageAlt": "Image {index} from page {page}",
+    "downloadImage": "Download image",
+    "downloadAll": "Download All"
   }
 }
