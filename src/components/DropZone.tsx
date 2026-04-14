@@ -1,4 +1,4 @@
-import { UploadCloudIcon } from "./Icons";
+import { FilePlusIcon } from "./Icons";
 
 interface DropZoneProps {
   title: string;
@@ -37,15 +37,15 @@ export function DropZone({
             : "max-w-lg py-14"
         } ${
           isDragOver
-            ? "border-primary bg-accent/30"
-            : "border-border bg-card/50 hover:border-primary hover:bg-accent/30"
+            ? "border-primary/40 bg-accent/20"
+            : "border-border bg-card/50 hover:border-primary/40 hover:bg-accent/20"
         }`}
       >
-        <UploadCloudIcon
+        <FilePlusIcon
           className={`transition-colors ${
             isDragOver
-              ? "text-primary"
-              : "text-muted-foreground group-hover:text-primary"
+              ? "text-primary/50"
+              : "text-muted-foreground group-hover:text-primary/50"
           }`}
         />
         <div className="text-center">

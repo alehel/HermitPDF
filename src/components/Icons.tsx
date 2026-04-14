@@ -453,6 +453,23 @@ export function UploadCloudIcon({ className, style }: IconProps) {
   );
 }
 
+export function FilePlusIcon({ className, style }: IconProps) {
+  return (
+    <svg className={className} width="72" height="72" viewBox="0 0 28 28" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" style={style}>
+      {/* Document shape with folded corner */}
+      <path d="M15 2H6a2 2 0 0 0-2 2v20a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V9Z" />
+      <polyline points="15 2 15 9 22 9" />
+      {/* "PDF" text centered on document */}
+      <text x="13" y="18" textAnchor="middle" fill="currentColor" stroke="none" fontSize="5.5" fontWeight="600" fontFamily="system-ui, sans-serif">PDF</text>
+      {/* Plus badge in lower-right — background circle to mask document border */}
+      <circle cx="23" cy="23" r="5.5" fill="var(--background, #fff)" stroke="none" />
+      <circle cx="23" cy="23" r="4.5" fill="currentColor" stroke="none" />
+      <line x1="23" y1="20.8" x2="23" y2="25.2" stroke="var(--background, #fff)" strokeWidth="1.5" />
+      <line x1="20.8" y1="23" x2="25.2" y2="23" stroke="var(--background, #fff)" strokeWidth="1.5" />
+    </svg>
+  );
+}
+
 export function PlusCircleIcon({ className, style }: IconProps) {
   return (
     <svg className={className} width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={style}>
