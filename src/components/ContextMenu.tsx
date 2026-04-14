@@ -69,7 +69,7 @@ export function ContextMenu({ x, y, items, onClose, anchorRef }: ContextMenuProp
           key={item.label}
           type="button"
           role="menuitem"
-          className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left text-sm text-popover-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
+          className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left text-xs text-popover-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
           onClick={() => {
             item.onClick();
             onClose();
