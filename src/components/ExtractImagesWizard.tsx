@@ -6,7 +6,7 @@ import { ExtractIcon, DownloadIcon } from "./Icons";
 import { DropZone } from "./DropZone";
 import { DismissibleBanner } from "./DismissibleBanner";
 import { WizardHeader } from "./WizardHeader";
-import { WizardTitle } from "./WizardTitle";
+import { WizardContainer } from "./WizardContainer";
 import { FileCard } from "./FileCard";
 import { WizardFooter } from "./WizardFooter";
 import { WizardFile, ExtractedImage } from "@/lib/types";
@@ -175,8 +175,7 @@ export function ExtractImagesWizard() {
           />
         )}
 
-        <main className="flex flex-1 flex-col items-center justify-center px-6 pb-16">
-          <WizardTitle icon={<ExtractIcon className="!h-4 !w-4" />} title={t("title")} />
+        <WizardContainer icon={<ExtractIcon className="!h-4 !w-4" />} title={t("title")} empty>
           <DropZone
             title={t("dropTitle")}
             subtitle={t("dropSubtitle")}
@@ -187,7 +186,7 @@ export function ExtractImagesWizard() {
             onDrop={handleDropZoneDrop}
             isDragOver={isDragOver}
           />
-        </main>
+        </WizardContainer>
       </div>
     );
   }
@@ -217,10 +216,7 @@ export function ExtractImagesWizard() {
         />
       )}
 
-      <main className="flex flex-1 flex-col items-center px-6 py-8">
-        <div className="w-full max-w-2xl">
-          <WizardTitle icon={<ExtractIcon className="!h-4 !w-4" />} title={t("title")} />
-
+      <WizardContainer icon={<ExtractIcon className="!h-4 !w-4" />} title={t("title")} maxWidth="max-w-2xl">
           <FileCard
             name={file.name}
             subtitle={`${t("pageCount", { count: file.pageCount })} \u00b7 ${formatSize(file.fileSize)}`}
@@ -285,8 +281,7 @@ export function ExtractImagesWizard() {
               </div>
             </div>
           )}
-        </div>
-      </main>
+      </WizardContainer>
 
       {extractedImages.length > 0 && (
         <WizardFooter
