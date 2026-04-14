@@ -179,11 +179,11 @@ export function PanelHeader({
   ];
 
   return (
-    <div className="border-b border-border bg-background">
-      <div role="toolbar" aria-label="Workbench tools" className="flex flex-wrap items-center gap-1 px-2 py-1.5">
+    <div className="px-2 py-1.5">
+      <div role="toolbar" aria-label="Workbench tools" className="flex flex-wrap items-center gap-1 rounded-lg bg-white px-2 py-1 shadow-sm dark:bg-card">
         {/* File: Add / Remove / Export */}
         <div className="flex items-center">
-          <Button variant="secondary" size="default" onClick={onAddFiles} className="rounded-r-none">
+          <Button variant="ghost" size="default" onClick={onAddFiles}>
             <PlusIcon />
             {t("addFiles")}
           </Button>
@@ -192,7 +192,7 @@ export function PanelHeader({
               <TooltipTrigger
                 render={
                   <DropdownMenuTrigger
-                    render={<Button variant="secondary" size="default" disabled={removeItems.length === 0} className="rounded-none border-l border-border/30 px-1.5" aria-label={t("remove")} />}
+                    render={<Button variant="ghost" size="default" disabled={removeItems.length === 0} className="px-1.5" aria-label={t("remove")} />}
                   />
                 }
               >
@@ -215,7 +215,7 @@ export function PanelHeader({
               <TooltipTrigger
                 render={
                   <DropdownMenuTrigger
-                    render={<Button variant="secondary" size="default" disabled={exportItems.length === 0} className="rounded-l-none border-l border-border/30 px-1.5" aria-label={t("export")} />}
+                    render={<Button variant="ghost" size="default" disabled={exportItems.length === 0} className="px-1.5" aria-label={t("export")} />}
                   />
                 }
               >
@@ -246,13 +246,15 @@ export function PanelHeader({
         <Separator orientation="vertical" className="mx-1 !h-6" />
 
         {/* Tools: Rotate / Extract */}
-        <DropdownIconButton icon={RotateLeftIcon} label={t("rotateGroup")} disabled={rotateDisabled} items={rotateItems} />
-        <DropdownIconButton
-          icon={ImageIcon}
-          label={isExtracting ? t("extracting") : t("extractImages")}
-          disabled={isExtracting}
-          items={extractItems}
-        />
+        <div className="flex items-center">
+          <DropdownIconButton icon={RotateLeftIcon} label={t("rotateGroup")} disabled={rotateDisabled} items={rotateItems} />
+          <DropdownIconButton
+            icon={ImageIcon}
+            label={isExtracting ? t("extracting") : t("extractImages")}
+            disabled={isExtracting}
+            items={extractItems}
+          />
+        </div>
 
         {/* View: Preview toggle */}
         {onTogglePreview && (

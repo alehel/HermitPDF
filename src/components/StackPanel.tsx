@@ -242,7 +242,7 @@ export function StackPanel({
   );
 
   return (
-    <aside suppressHydrationWarning style={style} className={clsx("flex min-w-0 flex-col bg-card", previewVisible !== false && "border-r border-border")}>
+    <aside suppressHydrationWarning style={style} className={clsx("flex min-w-0 flex-col bg-background", previewVisible !== false && "border-r border-border")}>
       <input
         ref={fileInputRef}
         type="file"
