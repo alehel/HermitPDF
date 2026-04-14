@@ -134,6 +134,21 @@ function buildPageContextMenuItems(
   return items;
 }
 
+async function exportFocusedPageAsPdf(
+  stack: PageStack,
+  focusedPageId: string
+): Promise<void> {
+  const page = stack.pages.find((p) => p.id === focusedPageId);
+  if (!page) return;
+  const bytes = await exportMergedPdf([{ ...stack, pages: [page] }]);
+  downloadPdf(bytes, `${stack.name}-page.pdf`);
+}
+
+async function exportStackAsPdf(stack: PageStack): Promise<void> {
+  const bytes = await exportMergedPdf([stack]);
+  downloadPdf(bytes, stack.name);
+}
+
 export function StackPanel({
   stacks,
   onFilesAdded,
@@ -191,13 +206,9 @@ export function StackPanel({
     if (!stack) return;
 
     if (focusedPageId && focusLevel === "page") {
-      const page = stack.pages.find((p) => p.id === focusedPageId);
-      if (!page) return;
-      const bytes = await exportMergedPdf([{ ...stack, pages: [page] }]);
-      downloadPdf(bytes, `${stack.name}-page.pdf`);
+      await exportFocusedPageAsPdf(stack, focusedPageId);
     } else {
-      const bytes = await exportMergedPdf([stack]);
-      downloadPdf(bytes, stack.name);
+      await exportStackAsPdf(stack);
     }
   }, [stacks, focusedStackId, focusedPageId, focusLevel]);
 

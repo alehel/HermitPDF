@@ -151,28 +151,33 @@ export function StackManager() {
 
   // --- Undo / Redo ---
 
-  /**
-   * After restoring a history snapshot (undo or redo), reconcile thumbnail
-   * caches for pages whose rotation changed and clear the focused page
-   * if it no longer exists in the restored state.
-   */
+  const invalidateThumbnails = useCallback((pageIds: string[]) => {
+    for (const id of pageIds) clearThumbnail(id);
+    setThumbnailVersions((prev) => {
+      const next = new Map(prev);
+      for (const id of pageIds) next.set(id, (prev.get(id) ?? 0) + 1);
+      return next;
+    });
+  }, []);
+
+  const clearFocusedPageIfRemoved = useCallback(
+    (restoredStacks: PageStack[]) => {
+      const pageIds = new Set(restoredStacks.flatMap((s) => s.pages.map((p) => p.id)));
+      setFocusedPageId((prev) => (prev && pageIds.has(prev) ? prev : null));
+    },
+    []
+  );
+
   const applyRestoredSnapshot = useCallback(
     (prevStacks: PageStack[], restored: HistorySnapshot | null) => {
       if (!restored) return;
 
       const changed = reconcileThumbnails(prevStacks, restored.stacks);
-      if (changed.length > 0) {
-        setThumbnailVersions((m) => {
-          const next = new Map(m);
-          for (const id of changed) next.set(id, (m.get(id) ?? 0) + 1);
-          return next;
-        });
-      }
+      if (changed.length > 0) invalidateThumbnails(changed);
 
-      const pageIds = new Set(restored.stacks.flatMap((s) => s.pages.map((p) => p.id)));
-      setFocusedPageId((prev) => (prev && pageIds.has(prev) ? prev : null));
+      clearFocusedPageIfRemoved(restored.stacks);
     },
-    []
+    [invalidateThumbnails, clearFocusedPageIfRemoved]
   );
 
   const handleUndo = useCallback(() => {
@@ -402,15 +407,6 @@ export function StackManager() {
 
     commit({ stacks: nextStacks, expandedStackIds: nextExpanded });
   }, [commit]);
-
-  const invalidateThumbnails = useCallback((pageIds: string[]) => {
-    for (const id of pageIds) clearThumbnail(id);
-    setThumbnailVersions((prev) => {
-      const next = new Map(prev);
-      for (const id of pageIds) next.set(id, (prev.get(id) ?? 0) + 1);
-      return next;
-    });
-  }, []);
 
   const applyRotation = useCallback((pageIds: string[], degrees: number) => {
     const idsSet = new Set(pageIds);

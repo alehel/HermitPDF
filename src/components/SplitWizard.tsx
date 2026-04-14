@@ -53,6 +53,29 @@ function formatRangeFilename(stem: string, range: PageRange): string {
   return `${stem}_pages_${range.from}-${range.to}.pdf`;
 }
 
+async function exportSingleRangeAsPdf(
+  file: WizardFile,
+  range: PageRange,
+  stem: string
+): Promise<void> {
+  const data = await exportMergedPdf([buildStackFromRange(file, range)]);
+  downloadPdf(data, formatRangeFilename(stem, range));
+}
+
+async function exportRangesAsZip(
+  file: WizardFile,
+  ranges: PageRange[],
+  stem: string
+): Promise<void> {
+  const entries: { name: string; data: Uint8Array }[] = [];
+  for (const range of ranges) {
+    const data = await exportMergedPdf([buildStackFromRange(file, range)]);
+    entries.push({ name: formatRangeFilename(stem, range), data });
+  }
+  const zipData = buildZip(entries);
+  downloadZip(zipData, `${stem}_split.zip`);
+}
+
 /* ------------------------------------------------------------------ */
 /*  Main component                                                      */
 /* ------------------------------------------------------------------ */
@@ -153,17 +176,9 @@ export function SplitWizard() {
       const stem = file.name.replace(/\.pdf$/i, "");
 
       if (validRanges.length === 1) {
-        const range = validRanges[0];
-        const data = await exportMergedPdf([buildStackFromRange(file, range)]);
-        downloadPdf(data, formatRangeFilename(stem, range));
+        await exportSingleRangeAsPdf(file, validRanges[0], stem);
       } else {
-        const entries: { name: string; data: Uint8Array }[] = [];
-        for (const range of validRanges) {
-          const data = await exportMergedPdf([buildStackFromRange(file, range)]);
-          entries.push({ name: formatRangeFilename(stem, range), data });
-        }
-        const zipData = buildZip(entries);
-        downloadZip(zipData, `${stem}_split.zip`);
+        await exportRangesAsZip(file, validRanges, stem);
       }
     } finally {
       setIsSplitting(false);
