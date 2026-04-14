@@ -28,10 +28,13 @@ export function Footer() {
           href="https://codeberg.org/alehel/hermitpdf"
           target="_blank"
           rel="noopener noreferrer"
-          className="flex flex-col items-center gap-1 transition-colors hover:text-foreground"
+          className="flex items-center gap-2 transition-colors hover:text-foreground"
         >
           <CodebergIcon className="h-7 w-7" />
-          <span className="text-xs">{t("sourceCode")}</span>
+          <div className="flex flex-col text-xs">
+            <span>{t("openSource")}</span>
+            <span>AGPL-3.0</span>
+          </div>
         </a>
       </div>
     </footer>

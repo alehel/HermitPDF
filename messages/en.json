@@ -146,7 +146,8 @@
   "footer": {
     "copyright": "\u00a9 {year}",
     "builtIn": "Built in Norway 🇳🇴, hosted in Europe 🇪🇺",
-    "sourceCode": "Source Code"
+    "sourceCode": "Source Code",
+    "openSource": "Open Source"
   },
   "extractImagesWizard": {
     "title": "Extract Images",
