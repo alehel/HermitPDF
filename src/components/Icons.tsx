@@ -485,10 +485,16 @@ export function CodebergIcon({ className, style }: IconProps) {
     <svg
       className={className}
       viewBox="0 0 24 24"
-      fill="currentColor"
       style={style}
     >
-      <path d="M11.955.49A12 12 0 0 0 0 12.49a12 12 0 0 0 1.832 6.373L11.838 5.928a.187.187 0 0 1 .324 0l10.006 12.935A12 12 0 0 0 24 12.49a12 12 0 0 0-12-12 12 12 0 0 0-.045 0zm.375 6.467 4.416 5.302-4.416 7.39-4.416-7.39z" />
+      <path
+        fill="#aaa"
+        d="M12 1A11 11 0 0 0 1 12a11 11 0 0 0 1.7 6.4L12 6l9.3 12.4A11 11 0 0 0 23 12 11 11 0 0 0 12 1Z"
+      />
+      <path
+        fill="#555"
+        d="M21.3 18.4 12 6l4.4 16.8a11 11 0 0 0 4.9-4.4Z"
+      />
     </svg>
   );
 }
