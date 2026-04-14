@@ -54,6 +54,26 @@ export function Workspace({
     },
     []
   );
+  const handleSaveImage = useCallback(async () => {
+    if (!imageContextMenu) return;
+    const { pageRef, imageIndex } = imageContextMenu;
+    const result = await extractSingleImage(
+      pageRef.sourceDocId,
+      pageRef.sourcePageIndex,
+      imageIndex
+    );
+    if (result) {
+      const stackName =
+        stacks.find((s) => s.pages.some((p) => p.id === pageRef.id))?.name ??
+        "image";
+      const stem = stackName.replace(/\.pdf$/i, "");
+      downloadSingleImage(
+        result.pngData,
+        `${stem}_p${pageRef.sourcePageIndex + 1}_img${imageIndex + 1}.png`
+      );
+    }
+  }, [imageContextMenu, stacks]);
+
   const lastReportedRef = useRef<string | null>(null);
 
   const items = useMemo<WorkspaceItem[]>(() => {
@@ -207,25 +227,7 @@ export function Workspace({
             {
               label: t("saveImage"),
               icon: <ImageIcon />,
-              onClick: async () => {
-                const { pageRef, imageIndex } = imageContextMenu;
-                const result = await extractSingleImage(
-                  pageRef.sourceDocId,
-                  pageRef.sourcePageIndex,
-                  imageIndex
-                );
-                if (result) {
-                  const stackName =
-                    stacks.find((s) =>
-                      s.pages.some((p) => p.id === pageRef.id)
-                    )?.name ?? "image";
-                  const stem = stackName.replace(/\.pdf$/i, "");
-                  downloadSingleImage(
-                    result.pngData,
-                    `${stem}_p${pageRef.sourcePageIndex + 1}_img${imageIndex + 1}.png`
-                  );
-                }
-              },
+              onClick: handleSaveImage,
             },
           ]}
         />
