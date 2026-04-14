@@ -187,8 +187,12 @@ export function StackManager() {
 
   // --- Document operations ---
 
-  const handleFilesAdded = useCallback(
-    async (files: FileList, insertAtIndex?: number) => {
+  const ingestDroppedFiles = useCallback(
+    async (files: FileList): Promise<{
+      newStacks: PageStack[];
+      rejected: string[];
+      passwordProtected: string[];
+    }> => {
       const allFiles = Array.from(files);
       const pdfFiles = allFiles.filter((f) => f.type === "application/pdf");
       const rejected = allFiles
@@ -214,12 +218,14 @@ export function StackManager() {
         })
       );
 
-      if (rejected.length > 0) setRejectedFiles(rejected);
-      if (passwordProtected.length > 0) setPasswordProtectedFiles(passwordProtected);
-
       const newStacks = results.filter((s): s is PageStack => s !== null);
-      if (newStacks.length === 0) return;
+      return { newStacks, rejected, passwordProtected };
+    },
+    []
+  );
 
+  const insertStacks = useCallback(
+    (newStacks: PageStack[], insertAtIndex?: number) => {
       const prev = stacksRef.current;
       let nextStacks: PageStack[];
       if (insertAtIndex !== undefined && insertAtIndex < prev.length) {
@@ -231,6 +237,20 @@ export function StackManager() {
       commit({ stacks: nextStacks, expandedStackIds: expandedRef.current });
     },
     [commit]
+  );
+
+  const handleFilesAdded = useCallback(
+    async (files: FileList, insertAtIndex?: number) => {
+      const { newStacks, rejected, passwordProtected } =
+        await ingestDroppedFiles(files);
+
+      if (rejected.length > 0) setRejectedFiles(rejected);
+      if (passwordProtected.length > 0) setPasswordProtectedFiles(passwordProtected);
+      if (newStacks.length === 0) return;
+
+      insertStacks(newStacks, insertAtIndex);
+    },
+    [ingestDroppedFiles, insertStacks]
   );
 
   const handleRemoveStack = useCallback((id: string) => {
@@ -383,44 +403,16 @@ export function StackManager() {
     commit({ stacks: nextStacks, expandedStackIds: nextExpanded });
   }, [commit]);
 
-  const handleRotatePage = useCallback((pageRefId: string, degrees: number) => {
-    const nextStacks = stacksRef.current.map((stack) => ({
-      ...stack,
-      pages: stack.pages.map((p) =>
-        p.id === pageRefId
-          ? { ...p, rotation: normalizeRotation(p.rotation, degrees) }
-          : p
-      ),
-    }));
-    commit({ stacks: nextStacks, expandedStackIds: expandedRef.current });
-    clearThumbnail(pageRefId);
+  const invalidateThumbnails = useCallback((pageIds: string[]) => {
+    for (const id of pageIds) clearThumbnail(id);
     setThumbnailVersions((prev) => {
       const next = new Map(prev);
-      next.set(pageRefId, (prev.get(pageRefId) ?? 0) + 1);
+      for (const id of pageIds) next.set(id, (prev.get(id) ?? 0) + 1);
       return next;
     });
-  }, [commit]);
+  }, []);
 
-  const handleRotate = useCallback((degrees: number) => {
-    let pageIds: string[];
-    if (focusLevel === "stack" && focusedStackId) {
-      const stack = stacksRef.current.find((s) => s.id === focusedStackId);
-      if (!stack) return;
-      pageIds = stack.pages.map((p) => p.id);
-    } else if (focusedPageId) {
-      pageIds = [focusedPageId];
-    } else {
-      return;
-    }
-    if (pageIds.length === 0) return;
-
-    // Single page — delegate
-    if (pageIds.length === 1) {
-      handleRotatePage(pageIds[0], degrees);
-      return;
-    }
-
-    // Multiple pages (whole stack) — single commit
+  const applyRotation = useCallback((pageIds: string[], degrees: number) => {
     const idsSet = new Set(pageIds);
     const nextStacks = stacksRef.current.map((stack) => ({
       ...stack,
@@ -431,13 +423,23 @@ export function StackManager() {
       ),
     }));
     commit({ stacks: nextStacks, expandedStackIds: expandedRef.current });
-    for (const id of pageIds) clearThumbnail(id);
-    setThumbnailVersions((prev) => {
-      const next = new Map(prev);
-      for (const id of pageIds) next.set(id, (prev.get(id) ?? 0) + 1);
-      return next;
-    });
-  }, [focusLevel, focusedStackId, focusedPageId, handleRotatePage, commit]);
+    invalidateThumbnails(pageIds);
+  }, [commit, invalidateThumbnails]);
+
+  const resolveRotationTargets = useCallback((): string[] | null => {
+    if (focusLevel === "stack" && focusedStackId) {
+      const stack = stacksRef.current.find((s) => s.id === focusedStackId);
+      return stack ? stack.pages.map((p) => p.id) : null;
+    }
+    if (focusedPageId) return [focusedPageId];
+    return null;
+  }, [focusLevel, focusedStackId, focusedPageId]);
+
+  const handleRotate = useCallback((degrees: number) => {
+    const pageIds = resolveRotationTargets();
+    if (!pageIds || pageIds.length === 0) return;
+    applyRotation(pageIds, degrees);
+  }, [resolveRotationTargets, applyRotation]);
 
   const handleMovePageBetweenStacks = useCallback((
     sourceStackId: string,

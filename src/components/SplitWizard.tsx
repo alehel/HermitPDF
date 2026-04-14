@@ -39,6 +39,20 @@ function isRangeValid(range: PageRange, pageCount: number): boolean {
   );
 }
 
+function buildStackFromRange(file: WizardFile, range: PageRange): PageStack {
+  const pages = file.stack.pages.slice(range.from - 1, range.to);
+  return {
+    id: crypto.randomUUID(),
+    pages,
+    name: file.name,
+    size: 0,
+  };
+}
+
+function formatRangeFilename(stem: string, range: PageRange): string {
+  return `${stem}_pages_${range.from}-${range.to}.pdf`;
+}
+
 /* ------------------------------------------------------------------ */
 /*  Main component                                                      */
 /* ------------------------------------------------------------------ */
@@ -139,33 +153,14 @@ export function SplitWizard() {
       const stem = file.name.replace(/\.pdf$/i, "");
 
       if (validRanges.length === 1) {
-        // Single range → download as single PDF
         const range = validRanges[0];
-        const pages = file.stack.pages.slice(range.from - 1, range.to);
-        const stack: PageStack = {
-          id: crypto.randomUUID(),
-          pages,
-          name: file.name,
-          size: 0,
-        };
-        const data = await exportMergedPdf([stack]);
-        downloadPdf(data, `${stem}_pages_${range.from}-${range.to}.pdf`);
+        const data = await exportMergedPdf([buildStackFromRange(file, range)]);
+        downloadPdf(data, formatRangeFilename(stem, range));
       } else {
-        // Multiple ranges → ZIP
         const entries: { name: string; data: Uint8Array }[] = [];
         for (const range of validRanges) {
-          const pages = file.stack.pages.slice(range.from - 1, range.to);
-          const stack: PageStack = {
-            id: crypto.randomUUID(),
-            pages,
-            name: file.name,
-            size: 0,
-          };
-          const data = await exportMergedPdf([stack]);
-          entries.push({
-            name: `${stem}_pages_${range.from}-${range.to}.pdf`,
-            data,
-          });
+          const data = await exportMergedPdf([buildStackFromRange(file, range)]);
+          entries.push({ name: formatRangeFilename(stem, range), data });
         }
         const zipData = buildZip(entries);
         downloadZip(zipData, `${stem}_split.zip`);
