@@ -9,24 +9,14 @@ import { WizardHeader } from "./WizardHeader";
 import { WizardTitle } from "./WizardTitle";
 import { FileCard } from "./FileCard";
 import { WizardFooter } from "./WizardFooter";
-import { PageStack, ExtractedImage } from "@/lib/types";
+import { WizardFile, ExtractedImage } from "@/lib/types";
 import { formatSize } from "@/lib/formatSize";
-import { ingestDocument } from "@/lib/pdfIngest";
-import { extractImagesFromDocument, releaseDocument } from "@/lib/mupdfClient";
+import { releaseWizardFile } from "@/lib/releaseWizardFile";
+import { extractImagesFromDocument } from "@/lib/mupdfClient";
 import { downloadImages, downloadSingleImage } from "@/lib/imageExport";
-import { releaseDoc } from "@/lib/pdfStore";
-
-/* ------------------------------------------------------------------ */
-/*  Types                                                               */
-/* ------------------------------------------------------------------ */
-
-interface ExtractFile {
-  id: string;
-  stack: PageStack;
-  name: string;
-  pageCount: number;
-  fileSize: number;
-}
+import { useDropZone } from "@/hooks/useDropZone";
+import { useFileInput } from "@/hooks/useFileInput";
+import { usePdfIngestion } from "@/hooks/usePdfIngestion";
 
 /* ------------------------------------------------------------------ */
 /*  Main component                                                      */
@@ -35,44 +25,25 @@ interface ExtractFile {
 export function ExtractImagesWizard() {
   const t = useTranslations("extractImagesWizard");
 
-  const [file, setFile] = useState<ExtractFile | null>(null);
-  const [rejectedFiles, setRejectedFiles] = useState<string[]>([]);
-  const [passwordProtectedFiles, setPasswordProtectedFiles] = useState<
-    string[]
-  >([]);
+  const [file, setFile] = useState<WizardFile | null>(null);
   const [isExtracting, setIsExtracting] = useState(false);
   const [noImagesFound, setNoImagesFound] = useState(false);
   const [extractedImages, setExtractedImages] = useState<ExtractedImage[]>([]);
-  const [isDragOver, setIsDragOver] = useState(false);
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
 
-  const fileInputRef = useRef<HTMLInputElement | null>(null);
   const fileRef = useRef(file);
   fileRef.current = file;
 
-  /* ---- Cleanup on unmount ---- */
-  useEffect(() => {
-    return () => {
-      const f = fileRef.current;
-      if (f) {
-        for (const page of f.stack.pages) {
-          releaseDocument(page.sourceDocId);
-          releaseDoc(page.sourceDocId);
-        }
-      }
-    };
-  }, []);
-
-  /* ---- Release a file's resources ---- */
-  const releaseFile = useCallback((f: ExtractFile) => {
-    for (const page of f.stack.pages) {
-      releaseDocument(page.sourceDocId);
-      releaseDoc(page.sourceDocId);
-    }
-  }, []);
+  const {
+    ingestFiles,
+    rejectedFiles,
+    setRejectedFiles,
+    passwordProtectedFiles,
+    setPasswordProtectedFiles,
+  } = usePdfIngestion();
 
   /* ---- Extract images (auto-triggered on file load) ---- */
-  const handleExtract = useCallback(async (f: ExtractFile) => {
+  const handleExtract = useCallback(async (f: WizardFile) => {
     setIsExtracting(true);
     setNoImagesFound(false);
     setExtractedImages([]);
@@ -92,83 +63,44 @@ export function ExtractImagesWizard() {
   /* ---- File ingestion ---- */
   const handleFilesAdded = useCallback(
     async (fileList: FileList) => {
-      const allFiles = Array.from(fileList);
-      const pdfFiles = allFiles.filter(
-        (f) =>
-          f.type === "application/pdf" ||
-          f.name.toLowerCase().endsWith(".pdf")
-      );
-      const rejected = allFiles
-        .filter(
-          (f) =>
-            f.type !== "application/pdf" &&
-            !f.name.toLowerCase().endsWith(".pdf")
-        )
-        .map((f) => f.name);
-      const pwProtected: string[] = [];
+      const { files, pdfCount } = await ingestFiles(fileList, { maxFiles: 1 });
+      if (files.length === 0) return;
 
-      if (pdfFiles.length === 0) {
-        if (rejected.length > 0) setRejectedFiles(rejected);
-        return;
-      }
+      const newFile = files[0];
+      setFile((prev) => {
+        if (prev) releaseWizardFile(prev);
+        return newFile;
+      });
+      setNoImagesFound(false);
+      handleExtract(newFile);
 
-      const f = pdfFiles[0];
-      try {
-        const data = await f.arrayBuffer();
-        const stack = await ingestDocument(data, f.name, f.size);
-        const newFile: ExtractFile = {
-          id: crypto.randomUUID(),
-          stack,
-          name: f.name,
-          pageCount: stack.pages.length,
-          fileSize: f.size,
-        };
-
-        setFile((prev) => {
-          if (prev) releaseFile(prev);
-          return newFile;
-        });
-        setNoImagesFound(false);
-        handleExtract(newFile);
-      } catch (err) {
-        const msg = err instanceof Error ? err.message.toLowerCase() : "";
-        if (msg.includes("password") || msg.includes("encrypted")) {
-          pwProtected.push(f.name);
-        } else {
-          rejected.push(f.name);
-        }
-      }
-
-      if (pdfFiles.length > 1) {
+      if (pdfCount > 1) {
         setRejectedFiles([t("onlyOneFile")]);
-      } else if (rejected.length > 0) {
-        setRejectedFiles(rejected);
       }
-      if (pwProtected.length > 0) setPasswordProtectedFiles(pwProtected);
     },
-    [releaseFile, handleExtract, t]
+    [ingestFiles, setRejectedFiles, handleExtract, t]
   );
 
-  /* ---- File input handler ---- */
-  const handleFileInput = useCallback(
-    (e: React.ChangeEvent<HTMLInputElement>) => {
-      if (e.target.files && e.target.files.length > 0) {
-        handleFilesAdded(e.target.files);
-        e.target.value = "";
-      }
-    },
-    [handleFilesAdded]
-  );
+  const { isDragOver, handleDropZoneDragOver, handleDropZoneDragLeave, handleDropZoneDrop } = useDropZone(handleFilesAdded);
+  const { fileInputRef, handleFileInput, openFilePicker } = useFileInput(handleFilesAdded);
+
+  /* ---- Cleanup on unmount ---- */
+  useEffect(() => {
+    return () => {
+      const f = fileRef.current;
+      if (f) releaseWizardFile(f);
+    };
+  }, []);
 
   /* ---- Remove the file ---- */
   const handleRemove = useCallback(() => {
     setFile((prev) => {
-      if (prev) releaseFile(prev);
+      if (prev) releaseWizardFile(prev);
       return null;
     });
     setNoImagesFound(false);
     setExtractedImages([]);
-  }, [releaseFile]);
+  }, []);
 
   /* ---- Download all images ---- */
   const handleDownloadAll = useCallback(() => {
@@ -205,33 +137,6 @@ export function ExtractImagesWizard() {
       previewUrls.forEach((url) => URL.revokeObjectURL(url));
     };
   }, [previewUrls]);
-
-  /* ---- Drop zone drag events ---- */
-  const handleDropZoneDragOver = useCallback((e: React.DragEvent) => {
-    e.preventDefault();
-    e.dataTransfer.dropEffect = "copy";
-    setIsDragOver(true);
-  }, []);
-
-  const handleDropZoneDragLeave = useCallback((e: React.DragEvent) => {
-    if (
-      e.currentTarget &&
-      !e.currentTarget.contains(e.relatedTarget as Node)
-    ) {
-      setIsDragOver(false);
-    }
-  }, []);
-
-  const handleDropZoneDrop = useCallback(
-    (e: React.DragEvent) => {
-      e.preventDefault();
-      setIsDragOver(false);
-      if (e.dataTransfer.files.length > 0) {
-        handleFilesAdded(e.dataTransfer.files);
-      }
-    },
-    [handleFilesAdded]
-  );
 
   /* ---- Hidden file input ---- */
   const fileInput = (
@@ -276,7 +181,7 @@ export function ExtractImagesWizard() {
             title={t("dropTitle")}
             subtitle={t("dropSubtitle")}
             privacyNote={t("privacyNote")}
-            onClick={() => fileInputRef.current?.click()}
+            onClick={openFilePicker}
             onDragOver={handleDropZoneDragOver}
             onDragLeave={handleDropZoneDragLeave}
             onDrop={handleDropZoneDrop}

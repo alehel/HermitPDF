@@ -10,25 +10,18 @@ import { WizardTitle } from "./WizardTitle";
 import { FileCard } from "./FileCard";
 import { WizardFooter } from "./WizardFooter";
 import { PdfThumbnail } from "./PdfThumbnail";
-import { PageStack } from "@/lib/types";
+import { PageStack, WizardFile } from "@/lib/types";
 import { formatSize } from "@/lib/formatSize";
-import { ingestDocument } from "@/lib/pdfIngest";
+import { releaseWizardFile } from "@/lib/releaseWizardFile";
 import { exportMergedPdf, downloadPdf } from "@/lib/pdfExport";
-import { releaseDoc } from "@/lib/pdfStore";
-import { releaseDocument } from "@/lib/mupdfClient";
 import { buildZip, downloadZip } from "@/lib/zipBuilder";
+import { useDropZone } from "@/hooks/useDropZone";
+import { useFileInput } from "@/hooks/useFileInput";
+import { usePdfIngestion } from "@/hooks/usePdfIngestion";
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                               */
 /* ------------------------------------------------------------------ */
-
-interface SplitFile {
-  id: string;
-  stack: PageStack;
-  name: string;
-  pageCount: number;
-  fileSize: number;
-}
 
 interface PageRange {
   id: string;
@@ -52,125 +45,63 @@ function isRangeValid(range: PageRange, pageCount: number): boolean {
 
 export function SplitWizard() {
   const t = useTranslations("splitWizard");
-  const [file, setFile] = useState<SplitFile | null>(null);
-  const [ranges, setRanges] = useState<PageRange[]>([]);
-  const [rejectedFiles, setRejectedFiles] = useState<string[]>([]);
-  const [passwordProtectedFiles, setPasswordProtectedFiles] = useState<
-    string[]
-  >([]);
-  const [isSplitting, setIsSplitting] = useState(false);
-  const [isDragOver, setIsDragOver] = useState(false);
 
-  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const [file, setFile] = useState<WizardFile | null>(null);
+  const [ranges, setRanges] = useState<PageRange[]>([]);
+  const [isSplitting, setIsSplitting] = useState(false);
+
   const fileRef = useRef(file);
   fileRef.current = file;
+
+  const {
+    ingestFiles,
+    rejectedFiles,
+    setRejectedFiles,
+    passwordProtectedFiles,
+    setPasswordProtectedFiles,
+  } = usePdfIngestion();
+
+  /* ---- File ingestion ---- */
+  const handleFilesAdded = useCallback(
+    async (fileList: FileList) => {
+      const { files, pdfCount } = await ingestFiles(fileList, { maxFiles: 1 });
+      if (files.length === 0) return;
+
+      const newFile = files[0];
+      setFile((prev) => {
+        if (prev) releaseWizardFile(prev);
+        return newFile;
+      });
+      setRanges([
+        { id: crypto.randomUUID(), from: 1, to: newFile.pageCount },
+      ]);
+
+      if (pdfCount > 1) {
+        setRejectedFiles([t("onlyOneFile")]);
+      }
+    },
+    [ingestFiles, setRejectedFiles, t]
+  );
+
+  const { isDragOver, handleDropZoneDragOver, handleDropZoneDragLeave, handleDropZoneDrop } = useDropZone(handleFilesAdded);
+  const { fileInputRef, handleFileInput, openFilePicker } = useFileInput(handleFilesAdded);
 
   /* ---- Cleanup on unmount ---- */
   useEffect(() => {
     return () => {
       const f = fileRef.current;
-      if (f) {
-        for (const page of f.stack.pages) {
-          releaseDocument(page.sourceDocId);
-          releaseDoc(page.sourceDocId);
-        }
-      }
+      if (f) releaseWizardFile(f);
     };
   }, []);
-
-  /* ---- Release a file's resources ---- */
-  const releaseFile = useCallback((f: SplitFile) => {
-    for (const page of f.stack.pages) {
-      releaseDocument(page.sourceDocId);
-      releaseDoc(page.sourceDocId);
-    }
-  }, []);
-
-  /* ---- File ingestion ---- */
-  const handleFilesAdded = useCallback(
-    async (fileList: FileList) => {
-      const allFiles = Array.from(fileList);
-      const pdfFiles = allFiles.filter(
-        (f) =>
-          f.type === "application/pdf" ||
-          f.name.toLowerCase().endsWith(".pdf")
-      );
-      const rejected = allFiles
-        .filter(
-          (f) =>
-            f.type !== "application/pdf" &&
-            !f.name.toLowerCase().endsWith(".pdf")
-        )
-        .map((f) => f.name);
-      const pwProtected: string[] = [];
-
-      if (pdfFiles.length === 0) {
-        if (rejected.length > 0) setRejectedFiles(rejected);
-        return;
-      }
-
-      // Only use the first PDF
-      const f = pdfFiles[0];
-      try {
-        const data = await f.arrayBuffer();
-        const stack = await ingestDocument(data, f.name, f.size);
-        const newFile: SplitFile = {
-          id: crypto.randomUUID(),
-          stack,
-          name: f.name,
-          pageCount: stack.pages.length,
-          fileSize: f.size,
-        };
-
-        // Release previous file if any
-        setFile((prev) => {
-          if (prev) releaseFile(prev);
-          return newFile;
-        });
-
-        // Initialize with one range covering the full document
-        setRanges([
-          { id: crypto.randomUUID(), from: 1, to: stack.pages.length },
-        ]);
-      } catch (err) {
-        const msg = err instanceof Error ? err.message.toLowerCase() : "";
-        if (msg.includes("password") || msg.includes("encrypted")) {
-          pwProtected.push(f.name);
-        } else {
-          rejected.push(f.name);
-        }
-      }
-
-      if (pdfFiles.length > 1) {
-        // Warn that we only used the first file
-        setRejectedFiles([t("onlyOneFile")]);
-      } else if (rejected.length > 0) {
-        setRejectedFiles(rejected);
-      }
-      if (pwProtected.length > 0) setPasswordProtectedFiles(pwProtected);
-    },
-    [releaseFile, t]
-  );
-
-  /* ---- File input handler ---- */
-  const handleFileInput = useCallback(
-    (e: React.ChangeEvent<HTMLInputElement>) => {
-      if (e.target.files && e.target.files.length > 0) {
-        handleFilesAdded(e.target.files);
-        e.target.value = "";
-      }
-    },
-    [handleFilesAdded]
-  );
 
   /* ---- Remove the file ---- */
   const handleRemove = useCallback(() => {
     setFile((prev) => {
-      if (prev) releaseFile(prev);
+      if (prev) releaseWizardFile(prev);
       return null;
     });
     setRanges([]);
-  }, [releaseFile]);
+  }, []);
 
   /* ---- Range management ---- */
   const handleAddRange = useCallback(() => {
@@ -244,33 +175,6 @@ export function SplitWizard() {
     }
   }, [file, ranges]);
 
-  /* ---- Drop zone drag events ---- */
-  const handleDropZoneDragOver = useCallback((e: React.DragEvent) => {
-    e.preventDefault();
-    e.dataTransfer.dropEffect = "copy";
-    setIsDragOver(true);
-  }, []);
-
-  const handleDropZoneDragLeave = useCallback((e: React.DragEvent) => {
-    if (
-      e.currentTarget &&
-      !e.currentTarget.contains(e.relatedTarget as Node)
-    ) {
-      setIsDragOver(false);
-    }
-  }, []);
-
-  const handleDropZoneDrop = useCallback(
-    (e: React.DragEvent) => {
-      e.preventDefault();
-      setIsDragOver(false);
-      if (e.dataTransfer.files.length > 0) {
-        handleFilesAdded(e.dataTransfer.files);
-      }
-    },
-    [handleFilesAdded]
-  );
-
   /* ---- Computed values ---- */
   const validRanges = file
     ? ranges.filter((r) => isRangeValid(r, file.pageCount))
@@ -319,7 +223,7 @@ export function SplitWizard() {
             title={t("dropTitle")}
             subtitle={t("dropSubtitle")}
             privacyNote={t("privacyNote")}
-            onClick={() => fileInputRef.current?.click()}
+            onClick={openFilePicker}
             onDragOver={handleDropZoneDragOver}
             onDragLeave={handleDropZoneDragLeave}
             onDrop={handleDropZoneDrop}
