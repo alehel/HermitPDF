@@ -546,22 +546,37 @@ export function SplitWizard() {
                       )}
                     </div>
                     {previewPages.length > 0 && (
-                      <div className="flex gap-2 overflow-x-auto border-t border-border px-3 py-3">
-                        {previewPages.map((page, i) => (
-                          <div
-                            key={page.id}
-                            className="flex shrink-0 flex-col items-center gap-1"
-                          >
+                      <div className="flex items-end justify-center gap-4 border-t border-border px-3 py-4">
+                        {/* First page */}
+                        <div className="flex shrink-0 flex-col items-center gap-1">
+                          <PdfThumbnail
+                            pageRef={previewPages[0]}
+                            width={120}
+                            className="shadow-sm"
+                          />
+                          <span className="text-xs text-muted-foreground">
+                            {range.from}
+                          </span>
+                        </div>
+                        {/* Ellipsis when more than 2 pages */}
+                        {previewPages.length > 2 && (
+                          <span className="mb-3 -mr-[0.3em] text-4xl tracking-[0.3em] text-muted-foreground">
+                            &hellip;
+                          </span>
+                        )}
+                        {/* Last page (if different from first) */}
+                        {previewPages.length > 1 && (
+                          <div className="flex shrink-0 flex-col items-center gap-1">
                             <PdfThumbnail
-                              pageRef={page}
-                              width={64}
+                              pageRef={previewPages[previewPages.length - 1]}
+                              width={120}
                               className="shadow-sm"
                             />
-                            <span className="text-[10px] text-muted-foreground">
-                              {range.from + i}
+                            <span className="text-xs text-muted-foreground">
+                              {range.to}
                             </span>
                           </div>
-                        ))}
+                        )}
                       </div>
                     )}
                   </div>
