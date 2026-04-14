@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Topbar } from "@/components/Topbar";
+import { useTranslations } from "next-intl";
 import { DismissibleBanner } from "@/components/DismissibleBanner";
 import { StackPanel } from "@/components/StackPanel";
 import { Workspace } from "@/components/Workspace";
@@ -48,6 +49,7 @@ function reconcileThumbnails(prev: PageStack[], next: PageStack[]): string[] {
 }
 
 export function StackManager() {
+  const t = useTranslations("documentPanel");
   // --- Refs for history eviction callback (set after useHistory call) ---
   const allDocIdsRef = useRef<() => Set<string>>(() => new Set());
   const allPageIdsRef = useRef<() => Set<string>>(() => new Set());
@@ -525,21 +527,22 @@ export function StackManager() {
       <Topbar />
       {rejectedFiles.length > 0 && (
         <DismissibleBanner
-          messageKey="rejectedFiles"
-          files={rejectedFiles}
+          message={t("rejectedFiles", { files: rejectedFiles.join(", ") })}
+          dismissLabel={t("dismiss")}
           onDismiss={() => setRejectedFiles([])}
         />
       )}
       {passwordProtectedFiles.length > 0 && (
         <DismissibleBanner
-          messageKey="passwordProtectedFiles"
-          files={passwordProtectedFiles}
+          message={t("passwordProtectedFiles", { files: passwordProtectedFiles.join(", ") })}
+          dismissLabel={t("dismiss")}
           onDismiss={() => setPasswordProtectedFiles([])}
         />
       )}
       {noImagesFound && (
         <DismissibleBanner
-          messageKey="noImagesFound"
+          message={t("noImagesFound")}
+          dismissLabel={t("dismiss")}
           onDismiss={clearNoImagesFound}
         />
       )}

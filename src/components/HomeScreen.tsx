@@ -13,6 +13,7 @@ import {
   WorkbenchIcon,
   ArrowRightIcon,
 } from "./Icons";
+import { QuickActionCard } from "./QuickActionCard";
 import { Footer } from "./Footer";
 
 function ThemeToggle() {
@@ -68,49 +69,9 @@ export function HomeScreen() {
           {t("quickActions")}
         </p>
         <div className="mb-10 flex w-full max-w-2xl gap-3">
-          {/* Merge — linked */}
-          <Link
-            href="/merge"
-            className="group flex flex-1 flex-col items-center gap-2 rounded-xl border border-border bg-card px-4 py-6 transition-all hover:border-primary hover:shadow-md"
-          >
-            <div className="text-muted-foreground transition-colors group-hover:text-primary">
-              <MergeIcon />
-            </div>
-            <span className="text-sm font-medium text-foreground">
-              {t("merge")}
-            </span>
-            <span className="text-xs text-muted-foreground">{t("mergeDesc")}</span>
-          </Link>
-
-          {/* Split — linked */}
-          <Link
-            href="/split"
-            className="group flex flex-1 flex-col items-center gap-2 rounded-xl border border-border bg-card px-4 py-6 transition-all hover:border-primary hover:shadow-md"
-          >
-            <div className="text-muted-foreground transition-colors group-hover:text-primary">
-              <ScissorsIcon />
-            </div>
-            <span className="text-sm font-medium text-foreground">
-              {t("split")}
-            </span>
-            <span className="text-xs text-muted-foreground">{t("splitDesc")}</span>
-          </Link>
-
-          {/* Extract Images — linked */}
-          <Link
-            href="/extract"
-            className="group flex flex-1 flex-col items-center gap-2 rounded-xl border border-border bg-card px-4 py-6 transition-all hover:border-primary hover:shadow-md"
-          >
-            <div className="text-muted-foreground transition-colors group-hover:text-primary">
-              <ExtractIcon />
-            </div>
-            <span className="text-sm font-medium text-foreground">
-              {t("extractImages")}
-            </span>
-            <span className="text-xs text-muted-foreground">
-              {t("extractImagesDesc")}
-            </span>
-          </Link>
+          <QuickActionCard href="/merge" icon={<MergeIcon />} title={t("merge")} description={t("mergeDesc")} />
+          <QuickActionCard href="/split" icon={<ScissorsIcon />} title={t("split")} description={t("splitDesc")} />
+          <QuickActionCard href="/extract" icon={<ExtractIcon />} title={t("extractImages")} description={t("extractImagesDesc")} />
         </div>
 
         {/* Divider */}
