@@ -16,6 +16,7 @@ import {
   PlusCircleIcon,
 } from "./Icons";
 import { DropZone } from "./DropZone";
+import { PdfThumbnail } from "./PdfThumbnail";
 import { PageStack } from "@/lib/types";
 import { ingestDocument } from "@/lib/pdfIngest";
 import { exportMergedPdf, downloadPdf } from "@/lib/pdfExport";
@@ -481,63 +482,87 @@ export function SplitWizard() {
             <div className="space-y-2">
               {ranges.map((range) => {
                 const valid = isRangeValid(range, file.pageCount);
+                const previewPages = valid
+                  ? file.stack.pages.slice(range.from - 1, range.to)
+                  : [];
                 return (
                   <div
                     key={range.id}
-                    className={`flex items-center gap-3 rounded-xl border bg-card p-3 ${
+                    className={`rounded-xl border bg-card ${
                       valid
                         ? "border-border"
                         : "border-red-400/50 bg-red-500/5"
                     }`}
                   >
-                    <span className="text-sm text-muted-foreground">
-                      {t("pages")}
-                    </span>
-                    <input
-                      type="number"
-                      min={1}
-                      max={file.pageCount}
-                      value={range.from}
-                      onChange={(e) =>
-                        handleRangeChange(
-                          range.id,
-                          "from",
-                          parseInt(e.target.value, 10) || 1
-                        )
-                      }
-                      className="w-16 rounded-lg border border-border bg-background px-2 py-1.5 text-center text-sm text-foreground outline-none focus:border-primary"
-                    />
-                    <span className="text-sm text-muted-foreground">{t("to")}</span>
-                    <input
-                      type="number"
-                      min={1}
-                      max={file.pageCount}
-                      value={range.to}
-                      onChange={(e) =>
-                        handleRangeChange(
-                          range.id,
-                          "to",
-                          parseInt(e.target.value, 10) || 1
-                        )
-                      }
-                      className="w-16 rounded-lg border border-border bg-background px-2 py-1.5 text-center text-sm text-foreground outline-none focus:border-primary"
-                    />
-                    <span className="flex-1 text-xs text-muted-foreground">
-                      / {file.pageCount}
-                    </span>
-                    {!valid && (
-                      <span className="text-xs text-red-500">
-                        {t("invalidRange")}
+                    <div className="flex items-center gap-3 p-3">
+                      <span className="text-sm text-muted-foreground">
+                        {t("pages")}
                       </span>
-                    )}
-                    {ranges.length > 1 && (
-                      <button
-                        type="button"
-                        onClick={() => handleRemoveRange(range.id)}
-                        className="rounded-lg p-1 text-muted-foreground transition-all hover:bg-red-500/10 hover:text-red-500"
-                      >
-                        <TrashIcon />
-                      </button>
+                      <input
+                        type="number"
+                        min={1}
+                        max={file.pageCount}
+                        value={range.from}
+                        onChange={(e) =>
+                          handleRangeChange(
+                            range.id,
+                            "from",
+                            parseInt(e.target.value, 10) || 1
+                          )
+                        }
+                        className="w-16 rounded-lg border border-border bg-background px-2 py-1.5 text-center text-sm text-foreground outline-none focus:border-primary"
+                      />
+                      <span className="text-sm text-muted-foreground">{t("to")}</span>
+                      <input
+                        type="number"
+                        min={1}
+                        max={file.pageCount}
+                        value={range.to}
+                        onChange={(e) =>
+                          handleRangeChange(
+                            range.id,
+                            "to",
+                            parseInt(e.target.value, 10) || 1
+                          )
+                        }
+                        className="w-16 rounded-lg border border-border bg-background px-2 py-1.5 text-center text-sm text-foreground outline-none focus:border-primary"
+                      />
+                      <span className="flex-1 text-xs text-muted-foreground">
+                        / {file.pageCount}
+                      </span>
+                      {!valid && (
+                        <span className="text-xs text-red-500">
+                          {t("invalidRange")}
+                        </span>
+                      )}
+                      {ranges.length > 1 && (
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveRange(range.id)}
+                          className="rounded-lg p-1 text-muted-foreground transition-all hover:bg-red-500/10 hover:text-red-500"
+                        >
+                          <TrashIcon />
+                        </button>
+                      )}
+                    </div>
+                    {previewPages.length > 0 && (
+                      <div className="flex gap-2 overflow-x-auto border-t border-border px-3 py-3">
+                        {previewPages.map((page, i) => (
+                          <div
+                            key={page.id}
+                            className="flex shrink-0 flex-col items-center gap-1"
+                          >
+                            <PdfThumbnail
+                              pageRef={page}
+                              width={64}
+                              className="shadow-sm"
+                            />
+                            <span className="text-[10px] text-muted-foreground">
+                              {range.from + i}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
                     )}
                   </div>
                 );
