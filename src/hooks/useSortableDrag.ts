@@ -42,6 +42,15 @@ export interface SortableDragResult {
 const STYLE_DRAGGED: React.CSSProperties = { opacity: 0, transition: "opacity 0ms" };
 const STYLE_TRANSITION: React.CSSProperties = { transition: "transform 200ms ease" };
 
+function suppressNativeDragImage(dataTransfer: DataTransfer): void {
+  const ghost = document.createElement("div");
+  ghost.style.cssText =
+    "position:absolute;top:-9999px;width:1px;height:1px;opacity:0.01";
+  document.body.appendChild(ghost);
+  dataTransfer.setDragImage(ghost, 0, 0);
+  requestAnimationFrame(() => ghost.remove());
+}
+
 export function useSortableDrag({
   itemCount,
   containerRef,
@@ -205,32 +214,30 @@ export function useSortableDrag({
     [calcDropIndex, onDrop, stopPropagation, acceptDrag]
   );
 
+  const initializeDragOffset = useCallback(
+    (index: number, clientX: number, clientY: number) => {
+      const rects = cachedRects.current;
+      if (!rects[index]) return;
+      dragOffsetRef.current = {
+        x: clientX - rects[index].left,
+        y: clientY - rects[index].top,
+      };
+      setOverlayInitialPos({
+        x: clientX - dragOffsetRef.current.x,
+        y: clientY - dragOffsetRef.current.y,
+      });
+    },
+    []
+  );
+
   const handleItemDragStart = useCallback(
     (index: number, e: React.DragEvent) => {
       setDragIndex(index);
       snapshotRects();
-
-      const rects = cachedRects.current;
-      if (rects[index]) {
-        dragOffsetRef.current = {
-          x: e.clientX - rects[index].left,
-          y: e.clientY - rects[index].top,
-        };
-        setOverlayInitialPos({
-          x: e.clientX - dragOffsetRef.current.x,
-          y: e.clientY - dragOffsetRef.current.y,
-        });
-      }
-
-      // Hide native ghost image
-      const ghost = document.createElement("div");
-      ghost.style.cssText =
-        "position:absolute;top:-9999px;width:1px;height:1px;opacity:0.01";
-      document.body.appendChild(ghost);
-      e.dataTransfer.setDragImage(ghost, 0, 0);
-      requestAnimationFrame(() => ghost.remove());
+      initializeDragOffset(index, e.clientX, e.clientY);
+      suppressNativeDragImage(e.dataTransfer);
     },
-    [snapshotRects]
+    [snapshotRects, initializeDragOffset]
   );
 
   const handleItemDragEnd = useCallback(() => {
