@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Image from "next/image";
 import { useTranslations } from "next-intl";
 import { Link } from "@/i18n/navigation";
@@ -15,10 +15,10 @@ import {
   DownloadIcon,
 } from "./Icons";
 import { DropZone } from "./DropZone";
-import { PageStack } from "@/lib/types";
+import { PageStack, ExtractedImage } from "@/lib/types";
 import { ingestDocument } from "@/lib/pdfIngest";
 import { extractImagesFromDocument, releaseDocument } from "@/lib/mupdfClient";
-import { downloadImages } from "@/lib/imageExport";
+import { downloadImages, downloadSingleImage } from "@/lib/imageExport";
 import { releaseDoc } from "@/lib/pdfStore";
 
 /* ------------------------------------------------------------------ */
@@ -80,7 +80,9 @@ export function ExtractImagesWizard() {
   >([]);
   const [isExtracting, setIsExtracting] = useState(false);
   const [noImagesFound, setNoImagesFound] = useState(false);
+  const [extractedImages, setExtractedImages] = useState<ExtractedImage[]>([]);
   const [isDragOver, setIsDragOver] = useState(false);
+  const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const fileRef = useRef(file);
@@ -104,6 +106,24 @@ export function ExtractImagesWizard() {
     for (const page of f.stack.pages) {
       releaseDocument(page.sourceDocId);
       releaseDoc(page.sourceDocId);
+    }
+  }, []);
+
+  /* ---- Extract images (auto-triggered on file load) ---- */
+  const handleExtract = useCallback(async (f: ExtractFile) => {
+    setIsExtracting(true);
+    setNoImagesFound(false);
+    setExtractedImages([]);
+    try {
+      const docId = f.stack.pages[0].sourceDocId;
+      const images = await extractImagesFromDocument(docId);
+      if (images.length === 0) {
+        setNoImagesFound(true);
+      } else {
+        setExtractedImages(images);
+      }
+    } finally {
+      setIsExtracting(false);
     }
   }, []);
 
@@ -147,6 +167,7 @@ export function ExtractImagesWizard() {
           return newFile;
         });
         setNoImagesFound(false);
+        handleExtract(newFile);
       } catch (err) {
         const msg = err instanceof Error ? err.message.toLowerCase() : "";
         if (msg.includes("password") || msg.includes("encrypted")) {
@@ -163,7 +184,7 @@ export function ExtractImagesWizard() {
       }
       if (pwProtected.length > 0) setPasswordProtectedFiles(pwProtected);
     },
-    [releaseFile, t]
+    [releaseFile, handleExtract, t]
   );
 
   /* ---- File input handler ---- */
@@ -184,25 +205,44 @@ export function ExtractImagesWizard() {
       return null;
     });
     setNoImagesFound(false);
+    setExtractedImages([]);
   }, [releaseFile]);
 
-  /* ---- Extract and download in one step ---- */
-  const handleExtractAndDownload = useCallback(async () => {
-    if (!file) return;
-    setIsExtracting(true);
-    setNoImagesFound(false);
-    try {
-      const docId = file.stack.pages[0].sourceDocId;
-      const images = await extractImagesFromDocument(docId);
-      if (images.length === 0) {
-        setNoImagesFound(true);
-      } else {
-        downloadImages(images, file.name);
-      }
-    } finally {
-      setIsExtracting(false);
-    }
-  }, [file]);
+  /* ---- Download all images ---- */
+  const handleDownloadAll = useCallback(() => {
+    if (!file || extractedImages.length === 0) return;
+    downloadImages(extractedImages, file.name);
+  }, [file, extractedImages]);
+
+  /* ---- Download a single image ---- */
+  const handleDownloadOne = useCallback(
+    (img: ExtractedImage) => {
+      if (!file) return;
+      const stem = file.name.replace(/\.pdf$/i, "");
+      downloadSingleImage(
+        img.pngData,
+        `${stem}_p${img.pageIndex + 1}_img${img.imageIndex + 1}.png`
+      );
+    },
+    [file]
+  );
+
+  /* ---- Stable blob URLs for image previews ---- */
+  const previewUrls = useMemo(
+    () =>
+      extractedImages.map((img) =>
+        URL.createObjectURL(
+          new Blob([img.pngData as BlobPart], { type: "image/png" })
+        )
+      ),
+    [extractedImages]
+  );
+
+  useEffect(() => {
+    return () => {
+      previewUrls.forEach((url) => URL.revokeObjectURL(url));
+    };
+  }, [previewUrls]);
 
   /* ---- Drop zone drag events ---- */
   const handleDropZoneDragOver = useCallback((e: React.DragEvent) => {
@@ -351,7 +391,7 @@ export function ExtractImagesWizard() {
       )}
 
       <main className="flex flex-1 flex-col items-center px-6 py-8">
-        <div className="w-full max-w-xl">
+        <div className="w-full max-w-2xl">
           {wizardTitle}
 
           {/* File card */}
@@ -378,35 +418,130 @@ export function ExtractImagesWizard() {
             </button>
           </div>
 
+          {/* Extracting spinner */}
+          {isExtracting && (
+            <div className="mt-6 flex items-center justify-center gap-2 py-8">
+              <div className="h-5 w-5 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+              <p className="text-sm text-muted-foreground">{t("extracting")}</p>
+            </div>
+          )}
+
           {/* No images found message */}
           {noImagesFound && (
             <div className="mt-6 rounded-xl border border-red-400/50 bg-red-500/5 p-4 text-center">
               <p className="text-sm text-red-500">{t("noImagesFound")}</p>
             </div>
           )}
+
+          {/* Image previews grid */}
+          {extractedImages.length > 0 && (
+            <div className="mt-6">
+              <p className="mb-3 text-xs font-medium uppercase tracking-widest text-muted-foreground">
+                {t("imagesFound", { count: extractedImages.length })}
+              </p>
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+                {extractedImages.map((img, i) => (
+                  <div
+                    key={`p${img.pageIndex}_i${img.imageIndex}`}
+                    className="group/card flex aspect-square flex-col overflow-hidden rounded-xl border border-border bg-card"
+                  >
+                    <button
+                      type="button"
+                      onClick={() => setLightboxIndex(i)}
+                      className="flex min-h-0 flex-1 cursor-zoom-in items-center justify-center overflow-hidden bg-accent/50 p-2"
+                    >
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={previewUrls[i]}
+                        alt={t("imageAlt", {
+                          page: img.pageIndex + 1,
+                          index: img.imageIndex + 1,
+                        })}
+                        className="pointer-events-none max-h-full max-w-full object-contain"
+                      />
+                    </button>
+                    <div className="flex shrink-0 items-center justify-between px-3 py-2">
+                      <span className="text-xs text-muted-foreground">
+                        {img.width}&times;{img.height}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => handleDownloadOne(img)}
+                        className="flex items-center rounded-lg px-2 py-1 text-xs font-medium text-primary transition-colors hover:bg-primary/10"
+                        title={t("downloadImage")}
+                      >
+                        <DownloadIcon />
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       </main>
 
       {/* Footer */}
-      <footer className="border-t border-border bg-card px-6 py-4">
-        <div className="mx-auto flex max-w-xl items-center justify-between">
-          <div className="text-sm text-muted-foreground">
-            <span className="font-medium text-foreground">
-              {file.pageCount}
-            </span>{" "}
-            {t("pageCount", { count: file.pageCount })}
+      {extractedImages.length > 0 && (
+        <footer className="border-t border-border bg-card px-6 py-4">
+          <div className="mx-auto flex max-w-2xl items-center justify-between">
+            <div className="text-sm text-muted-foreground">
+              {t("imagesFound", { count: extractedImages.length })}
+            </div>
+            <button
+              type="button"
+              onClick={handleDownloadAll}
+              className="flex items-center gap-2 rounded-xl bg-primary px-6 py-3 font-medium text-white transition-all hover:shadow-lg"
+            >
+              <DownloadIcon />
+              {t("downloadAll")}
+            </button>
           </div>
-          <button
-            type="button"
-            onClick={handleExtractAndDownload}
-            disabled={isExtracting}
-            className="flex items-center gap-2 rounded-xl bg-primary px-6 py-3 font-medium text-white transition-all hover:shadow-lg disabled:opacity-60"
+        </footer>
+      )}
+
+      {/* Lightbox */}
+      {lightboxIndex !== null && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm"
+          onClick={() => setLightboxIndex(null)}
+        >
+          <div
+            className="relative flex max-h-[90vh] max-w-[90vw] flex-col items-center"
+            onClick={(e) => e.stopPropagation()}
           >
-            <DownloadIcon />
-            {isExtracting ? t("extracting") : t("extractAndDownload")}
-          </button>
+            <div className="mb-3 flex items-center gap-3">
+              <span className="text-sm text-white/70">
+                {extractedImages[lightboxIndex].width}&times;
+                {extractedImages[lightboxIndex].height}
+              </span>
+              <button
+                type="button"
+                onClick={() => handleDownloadOne(extractedImages[lightboxIndex])}
+                className="flex items-center gap-1.5 rounded-lg bg-white/10 px-3 py-1.5 text-sm font-medium text-white transition-colors hover:bg-white/20"
+              >
+                <DownloadIcon />
+                {t("downloadImage")}
+              </button>
+            </div>
+            <button
+              type="button"
+              onClick={() => setLightboxIndex(null)}
+              className="cursor-zoom-out"
+            >
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={previewUrls[lightboxIndex]}
+                alt={t("imageAlt", {
+                  page: extractedImages[lightboxIndex].pageIndex + 1,
+                  index: extractedImages[lightboxIndex].imageIndex + 1,
+                })}
+                className="pointer-events-none max-h-[80vh] max-w-[90vw] rounded-lg object-contain"
+              />
+            </button>
+          </div>
         </div>
-      </footer>
+      )}
     </div>
   );
 }
