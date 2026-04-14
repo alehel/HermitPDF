@@ -1,0 +1,140 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+    --font-heading: var(--font-urbanist), var(--font-sans);
+    --font-sans: var(--font-sans);
+
+    --color-background: var(--background);
+    --color-foreground: var(--foreground);
+    --color-card: var(--card);
+    --color-card-foreground: var(--card-foreground);
+    --color-popover: var(--popover);
+    --color-popover-foreground: var(--popover-foreground);
+    --color-primary: var(--primary);
+    --color-primary-foreground: var(--primary-foreground);
+    --color-secondary: var(--secondary);
+    --color-secondary-foreground: var(--secondary-foreground);
+    --color-muted: var(--muted);
+    --color-muted-foreground: var(--muted-foreground);
+    --color-accent: var(--accent);
+    --color-accent-foreground: var(--accent-foreground);
+    --color-destructive: var(--destructive);
+    --color-border: var(--border);
+    --color-input: var(--input);
+    --color-ring: var(--ring);
+    --color-success: var(--success);
+    --color-sidebar: var(--sidebar);
+    --color-sidebar-hover: var(--sidebar-hover);
+    --color-sidebar-foreground: var(--sidebar-foreground);
+    --color-sidebar-border: var(--sidebar-border);
+    --color-sidebar-accent: var(--sidebar-accent);
+    --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+    --color-sidebar-primary: var(--sidebar-primary);
+    --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+    --color-sidebar-ring: var(--sidebar-ring);
+
+    --radius-sm: calc(var(--radius) * 0.6);
+    --radius-md: calc(var(--radius) * 0.8);
+    --radius-lg: var(--radius);
+    --radius-xl: calc(var(--radius) * 1.4);
+    --radius-2xl: calc(var(--radius) * 1.8);
+
+    --animate-pulse-dot: pulse-dot 2s ease-in-out infinite;
+}
+
+/* ------------------------------------------------------------------ */
+/*  Light theme                                                        */
+/* ------------------------------------------------------------------ */
+
+:root {
+    --radius: 0.625rem;
+
+    --background: #F4F5F7;
+    --foreground: #1A1D26;
+    --card: #FFFFFF;
+    --card-foreground: #1A1D26;
+    --popover: #FFFFFF;
+    --popover-foreground: #1A1D26;
+    --primary: #D85A30;
+    --primary-foreground: #FFFFFF;
+    --secondary: #ECEDF0;
+    --secondary-foreground: #1A1D26;
+    --muted: #ECEDF0;
+    --muted-foreground: #6E7181;
+    --accent: #FBF0EC;
+    --accent-foreground: #1A1D26;
+    --destructive: #E5484D;
+    --border: rgba(0, 0, 0, 0.12);
+    --input: rgba(0, 0, 0, 0.12);
+    --ring: #D85A30;
+    --success: #1D9E75;
+
+    --sidebar: #1A1D26;
+    --sidebar-hover: #272B36;
+    --sidebar-foreground: #FFFFFF;
+    --sidebar-primary: #D85A30;
+    --sidebar-primary-foreground: #FFFFFF;
+    --sidebar-accent: #272B36;
+    --sidebar-accent-foreground: #FFFFFF;
+    --sidebar-border: rgba(255, 255, 255, 0.12);
+    --sidebar-ring: #D85A30;
+}
+
+/* ------------------------------------------------------------------ */
+/*  Dark theme                                                         */
+/* ------------------------------------------------------------------ */
+
+.dark {
+    --background: #18191E;
+    --foreground: #E4E5E9;
+    --card: #1F2128;
+    --card-foreground: #E4E5E9;
+    --popover: #1F2128;
+    --popover-foreground: #E4E5E9;
+    --primary: #E8744F;
+    --primary-foreground: #FFFFFF;
+    --secondary: #131418;
+    --secondary-foreground: #E4E5E9;
+    --muted: #131418;
+    --muted-foreground: #6E7181;
+    --accent: #382318;
+    --accent-foreground: #E4E5E9;
+    --destructive: #E5484D;
+    --border: rgba(255, 255, 255, 0.12);
+    --input: rgba(255, 255, 255, 0.12);
+    --ring: #E8744F;
+    --success: #2AB88A;
+
+    --sidebar: #0F1117;
+    --sidebar-hover: #1A1E2A;
+    --sidebar-foreground: #E4E5E9;
+    --sidebar-primary: #E8744F;
+    --sidebar-primary-foreground: #FFFFFF;
+    --sidebar-accent: #1A1E2A;
+    --sidebar-accent-foreground: #E4E5E9;
+    --sidebar-border: rgba(255, 255, 255, 0.12);
+    --sidebar-ring: #E8744F;
+}
+
+
+/* ------------------------------------------------------------------ */
+/*  Base layer                                                         */
+/* ------------------------------------------------------------------ */
+
+@layer base {
+    * {
+        @apply border-border outline-ring/50;
+    }
+    body {
+        @apply bg-background text-foreground;
+    }
+}
+
+@keyframes pulse-dot {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.4; }
+}
