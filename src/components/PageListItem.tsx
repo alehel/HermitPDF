@@ -63,14 +63,16 @@ export const PageListItem = memo(function PageListItem({
         className={clsx(
           "flex cursor-grab select-none flex-col items-center rounded-md p-1.5 transition-colors active:cursor-grabbing",
           isDragging ? "opacity-0" : "hover:bg-card",
-          isFocused && "ring-2 ring-primary"
         )}
         style={style}
         onContextMenu={contextMenuHandler}
         onClick={handleClick}
         {...dragProps}
       >
-        <div className="flex items-center justify-center overflow-hidden rounded border border-border bg-card">
+        <div className={clsx(
+          "flex items-center justify-center overflow-hidden rounded border border-border bg-card",
+          isFocused && "ring-2 ring-primary"
+        )}>
           <PdfThumbnail
             pageRef={pageRef}
             width={80}
@@ -90,14 +92,16 @@ export const PageListItem = memo(function PageListItem({
       className={clsx(
         "flex cursor-grab select-none items-center gap-2 rounded-md p-1.5 transition-colors active:cursor-grabbing",
         isDragging ? "opacity-0" : "hover:bg-card",
-        isFocused && "ring-2 ring-primary"
       )}
       style={style}
       onContextMenu={contextMenuHandler}
       onClick={handleClick}
       {...dragProps}
     >
-      <div className="flex h-[46px] w-[36px] shrink-0 items-center justify-center overflow-hidden rounded border border-border bg-card">
+      <div className={clsx(
+        "flex h-[46px] w-[36px] shrink-0 items-center justify-center overflow-hidden rounded border border-border bg-card",
+        isFocused && "ring-2 ring-primary"
+      )}>
         <PdfThumbnail
           pageRef={pageRef}
           width={36}
