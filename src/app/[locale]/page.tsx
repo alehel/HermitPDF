@@ -1,7 +1,6 @@
-"use client";
-
+import type { Metadata } from "next";
 import Image from "next/image";
-import { useTranslations } from "next-intl";
+import { getTranslations, setRequestLocale } from "next-intl/server";
 import { Link } from "@/i18n/navigation";
 import { AppHeader } from "@/components/AppHeader";
 import {
@@ -15,8 +14,27 @@ import {
 import { QuickActionCard } from "@/components/QuickActionCard";
 import { Footer } from "@/components/Footer";
 
-export default function Home() {
-  const t = useTranslations("homeScreen");
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ locale: string }>;
+}): Promise<Metadata> {
+  const { locale } = await params;
+  const t = await getTranslations({ locale, namespace: "homeScreen" });
+  return {
+    title: "HermitPDF — " + t("tagline"),
+    description: t("tagline"),
+  };
+}
+
+export default async function Home({
+  params,
+}: {
+  params: Promise<{ locale: string }>;
+}) {
+  const { locale } = await params;
+  setRequestLocale(locale);
+  const t = await getTranslations("homeScreen");
 
   return (
     <div className="flex min-h-screen flex-col bg-background">
