@@ -38,11 +38,9 @@ interface StackPanelProps {
   onExtractPageToList?: (sourceStackId: string, pageIndex: number, insertAtStackIndex: number) => void;
   onInsertStackIntoExpanded?: (targetStackId: string, sourceStackIndex: number, insertAtPageIndex: number) => void;
   onMovePageBetweenStacks?: (sourceStackId: string, sourcePageIndex: number, targetStackId: string, insertAtPageIndex: number) => void;
-  focusedStackId?: string | null;
-  focusedPageId?: string | null;
-  focusLevel?: "stack" | "page";
-  onScrollToPage?: (pageId: string) => void;
-  onStackSelect?: (stackId: string) => void;
+  selectedPageIds: Set<string>;
+  onPageClick: (pageId: string, e: React.MouseEvent) => void;
+  onStackClick: (stackId: string, e: React.MouseEvent) => void;
   onRotateLeft?: () => void;
   onRotateRight?: () => void;
   rotateDisabled?: boolean;
@@ -52,7 +50,7 @@ interface StackPanelProps {
   canRedo?: boolean;
   thumbnailVersions?: Map<string, number>;
   onExtractAllImages?: () => void;
-  onExtractFocusedPage?: () => void;
+  onExtractSelectedPages?: () => void;
   onExtractPageImages?: (stackId: string, pageIndex: number) => void;
   onExtractStackImages?: (stackId: string) => void;
   extractAllDisabled?: boolean;
@@ -60,6 +58,7 @@ interface StackPanelProps {
   isExtracting?: boolean;
   onRemoveSelected?: () => void;
   removeSelectedDisabled?: boolean;
+  onDeselect?: () => void;
 }
 
 /** Build context menu items for a right-clicked stack (not a page). */
@@ -134,20 +133,6 @@ function buildPageContextMenuItems(
   return items;
 }
 
-async function exportFocusedPageAsPdf(
-  stack: PageStack,
-  focusedPageId: string
-): Promise<void> {
-  const page = stack.pages.find((p) => p.id === focusedPageId);
-  if (!page) return;
-  const bytes = await exportMergedPdf([{ ...stack, pages: [page] }]);
-  downloadPdf(bytes, `${stack.name}-page.pdf`);
-}
-
-async function exportStackAsPdf(stack: PageStack): Promise<void> {
-  const bytes = await exportMergedPdf([stack]);
-  downloadPdf(bytes, stack.name);
-}
 
 export function StackPanel({
   stacks,
@@ -170,11 +155,9 @@ export function StackPanel({
   onExtractPageToList,
   onInsertStackIntoExpanded,
   onMovePageBetweenStacks,
-  focusedStackId,
-  focusedPageId,
-  focusLevel,
-  onScrollToPage,
-  onStackSelect,
+  selectedPageIds,
+  onPageClick,
+  onStackClick,
   onRotateLeft,
   onRotateRight,
   rotateDisabled,
@@ -184,7 +167,7 @@ export function StackPanel({
   canRedo,
   thumbnailVersions,
   onExtractAllImages,
-  onExtractFocusedPage,
+  onExtractSelectedPages,
   onExtractPageImages,
   onExtractStackImages,
   extractAllDisabled,
@@ -192,6 +175,7 @@ export function StackPanel({
   isExtracting,
   onRemoveSelected,
   removeSelectedDisabled,
+  onDeselect,
 }: StackPanelProps) {
   const tItem = useTranslations("documentItem");
   const t = useTranslations("documentPanel");
@@ -201,16 +185,15 @@ export function StackPanel({
   const [showExportModal, setShowExportModal] = useState(false);
 
   const handleExportSelection = useCallback(async () => {
-    if (!focusedStackId) return;
-    const stack = stacks.find((s) => s.id === focusedStackId);
-    if (!stack) return;
-
-    if (focusedPageId && focusLevel === "page") {
-      await exportFocusedPageAsPdf(stack, focusedPageId);
-    } else {
-      await exportStackAsPdf(stack);
-    }
-  }, [stacks, focusedStackId, focusedPageId, focusLevel]);
+    if (selectedPageIds.size === 0) return;
+    const filtered = stacks
+      .map((s) => ({ ...s, pages: s.pages.filter((p) => selectedPageIds.has(p.id)) }))
+      .filter((s) => s.pages.length > 0);
+    if (filtered.length === 0) return;
+    const bytes = await exportMergedPdf(filtered);
+    const name = filtered.length === 1 ? filtered[0].name : "selection.pdf";
+    downloadPdf(bytes, name);
+  }, [stacks, selectedPageIds]);
 
   const {
     dropIndex,
@@ -233,10 +216,14 @@ export function StackPanel({
     viewMode,
   });
 
-  const handleCardClick = onStackSelect
-    || (onScrollToPage
-      ? (stackId: string) => onScrollToPage(stacks.find(s => s.id === stackId)!.pages[0].id)
-      : undefined);
+  const handleCardClick = onStackClick;
+
+  const handleBackgroundClick = useCallback((e: React.MouseEvent) => {
+    const target = e.target as HTMLElement;
+    if (!target.closest("[data-doc-item], [data-expansion-box]")) {
+      onDeselect?.();
+    }
+  }, [onDeselect]);
 
   const handleBrowse = useCallback(() => {
     fileInputRef.current?.click();
@@ -264,7 +251,7 @@ export function StackPanel({
         aria-label={t("addFiles")}
       />
 
-      <PanelHeader onAddFiles={handleBrowse} onClearAll={onClearAll} clearAllDisabled={stacks.length === 0} previewVisible={previewVisible} onTogglePreview={onTogglePreview} onRotateLeft={onRotateLeft} onRotateRight={onRotateRight} rotateDisabled={rotateDisabled} onUndo={onUndo} onRedo={onRedo} canUndo={canUndo} canRedo={canRedo} onExtractAllImages={onExtractAllImages} onExtractFocusedPage={onExtractFocusedPage} extractAllDisabled={extractAllDisabled} extractPageDisabled={extractPageDisabled} isExtracting={isExtracting} onRemoveSelected={onRemoveSelected} removeSelectedDisabled={removeSelectedDisabled} onExportAll={() => setShowExportModal(true)} onExportSelection={handleExportSelection} exportAllDisabled={stacks.length === 0} exportSelectionDisabled={!focusedStackId} />
+      <PanelHeader onAddFiles={handleBrowse} onClearAll={onClearAll} clearAllDisabled={stacks.length === 0} previewVisible={previewVisible} onTogglePreview={onTogglePreview} onRotateLeft={onRotateLeft} onRotateRight={onRotateRight} rotateDisabled={rotateDisabled} onUndo={onUndo} onRedo={onRedo} canUndo={canUndo} canRedo={canRedo} onExtractAllImages={onExtractAllImages} onExtractFocusedPage={onExtractSelectedPages} extractAllDisabled={extractAllDisabled} extractPageDisabled={extractPageDisabled} isExtracting={isExtracting} onRemoveSelected={onRemoveSelected} removeSelectedDisabled={removeSelectedDisabled} onExportAll={() => setShowExportModal(true)} onExportSelection={handleExportSelection} exportAllDisabled={stacks.length === 0} exportSelectionDisabled={selectedPageIds.size === 0} />
 
       <div
         ref={listRef}
@@ -275,6 +262,7 @@ export function StackPanel({
         onDragOver={handleDragOver}
         onDragLeave={handleDragLeave}
         onDrop={handleDrop}
+        onClick={handleBackgroundClick}
       >
         {stacks.length === 0 ? (
           <DropZone
@@ -300,8 +288,7 @@ export function StackPanel({
                   onContextMenu={onContextMenu}
                   isExpanded={expandedStackIds?.has(stack.id)}
                   onToggleExpand={onToggleExpand}
-                  isFocused={focusedStackId === stack.id}
-                  focusLevel={focusLevel}
+                  isSelected={stack.pages.some((p) => selectedPageIds.has(p.id))}
                   onClick={handleCardClick}
                 />
                 {expandedStackIds?.has(stack.id) && stack.pages.length > 0 && onReorderPage && onInsertStackIntoExpanded && onMovePageBetweenStacks && (
@@ -312,9 +299,8 @@ export function StackPanel({
                     onInsertStackIntoExpanded={onInsertStackIntoExpanded}
                     onMovePageBetweenStacks={onMovePageBetweenStacks}
                     onPageContextMenu={onPageContextMenu}
-                    focusedPageId={focusedPageId}
-                    focusLevel={focusedStackId === stack.id ? focusLevel : undefined}
-                    onScrollToPage={onScrollToPage}
+                    selectedPageIds={selectedPageIds}
+                    onPageClick={onPageClick}
                     thumbnailVersions={thumbnailVersions}
                   />
                 )}
@@ -348,8 +334,7 @@ export function StackPanel({
                       onContextMenu={onContextMenu}
                       isExpanded={isExpanded}
                       onToggleExpand={onToggleExpand}
-                      isFocused={focusedStackId === stack.id}
-                      focusLevel={focusLevel}
+                      isSelected={stack.pages.some((p) => selectedPageIds.has(p.id))}
                       onClick={handleCardClick}
                     />
                   </div>
@@ -364,9 +349,8 @@ export function StackPanel({
                         onPageContextMenu={onPageContextMenu}
                         variant="grid"
                         parentCardElement={gridCardRefs.current.get(stack.id)}
-                        focusedPageId={focusedPageId}
-                        focusLevel={focusedStackId === stack.id ? focusLevel : undefined}
-                        onScrollToPage={onScrollToPage}
+                        selectedPageIds={selectedPageIds}
+                        onPageClick={onPageClick}
                         thumbnailVersions={thumbnailVersions}
                       />
                     </div>

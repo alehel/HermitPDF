@@ -30,9 +30,8 @@ interface PageExpansionBoxProps {
   onPageContextMenu?: (e: React.MouseEvent, stackId: string, pageIndex: number) => void;
   variant?: "list" | "grid";
   parentCardElement?: HTMLElement | null;
-  focusedPageId?: string | null;
-  focusLevel?: "stack" | "page";
-  onScrollToPage?: (pageId: string) => void;
+  selectedPageIds: Set<string>;
+  onPageClick?: (pageId: string, e: React.MouseEvent) => void;
   thumbnailVersions?: Map<string, number>;
 }
 
@@ -45,9 +44,8 @@ export const PageExpansionBox = memo(function PageExpansionBox({
   onPageContextMenu,
   variant = "list",
   parentCardElement,
-  focusedPageId,
-  focusLevel,
-  onScrollToPage,
+  selectedPageIds,
+  onPageClick,
   thumbnailVersions,
 }: PageExpansionBoxProps) {
   const boxRef = useRef<HTMLDivElement>(null);
@@ -93,7 +91,7 @@ export const PageExpansionBox = memo(function PageExpansionBox({
         >
           <div className="h-0 w-0 border-b-[8px] border-l-[8px] border-r-[8px] border-b-border border-l-transparent border-r-transparent" />
           <div
-            className="absolute left-[1px] top-[1px] h-0 w-0 border-b-[7px] border-l-[7px] border-r-[7px] border-b-background border-l-transparent border-r-transparent"
+            className="absolute left-[1px] top-[1px] h-0 w-0 border-b-[7px] border-l-[7px] border-r-[7px] border-b-card border-l-transparent border-r-transparent"
           />
         </div>
       )}
@@ -101,7 +99,7 @@ export const PageExpansionBox = memo(function PageExpansionBox({
         ref={boxRef}
         data-expansion-box
         className={clsx(
-          "rounded-lg border border-border bg-background p-2 transition-colors",
+          "rounded-lg border border-border bg-card p-2 transition-colors",
           pageDropIndex !== null && !isSameContainerDrag && "bg-accent/40"
         )}
         onDragOver={handlePageDragOver}
@@ -123,8 +121,8 @@ export const PageExpansionBox = memo(function PageExpansionBox({
                   onContextMenu={onPageContextMenu}
                   layout="tile"
                   style={getItemStyle(i)}
-                  isFocused={focusLevel === "stack" || focusedPageId === pageRef.id}
-                  onClick={onScrollToPage}
+                  isFocused={selectedPageIds.has(pageRef.id)}
+                  onClick={onPageClick}
                   version={thumbnailVersions?.get(pageRef.id)}
                 />
               </div>
@@ -149,8 +147,8 @@ export const PageExpansionBox = memo(function PageExpansionBox({
                   isDragging={pageDragIndex === i}
                   onContextMenu={onPageContextMenu}
                   style={getItemStyle(i)}
-                  isFocused={focusLevel === "stack" || focusedPageId === pageRef.id}
-                  onClick={onScrollToPage}
+                  isFocused={selectedPageIds.has(pageRef.id)}
+                  onClick={onPageClick}
                   version={thumbnailVersions?.get(pageRef.id)}
                 />
               </div>

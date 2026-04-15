@@ -8,7 +8,7 @@ import type { ExtractedImage } from "@/lib/types";
 
 interface UseImageExtractionOptions {
   stacksRef: React.RefObject<PageStack[]>;
-  focusedPageId: string | null;
+  selectedPageIds: Set<string>;
 }
 
 interface UseImageExtractionResult {
@@ -18,12 +18,12 @@ interface UseImageExtractionResult {
   handleExtractPageImages: (stackId: string, pageIndex: number) => Promise<void>;
   handleExtractStackImages: (stackId: string) => Promise<void>;
   handleExtractAllImages: () => Promise<void>;
-  handleExtractFocusedPage: () => Promise<void>;
+  handleExtractSelectedPages: () => Promise<void>;
 }
 
 export function useImageExtraction({
   stacksRef,
-  focusedPageId,
+  selectedPageIds,
 }: UseImageExtractionOptions): UseImageExtractionResult {
   const [isExtracting, setIsExtracting] = useState(false);
   const [noImagesFound, setNoImagesFound] = useState(false);
@@ -107,16 +107,17 @@ export function useImageExtraction({
     );
   }, [stacksRef, withExtractionState]);
 
-  const handleExtractFocusedPage = useCallback(async () => {
-    if (!focusedPageId) return;
+  const handleExtractSelectedPages = useCallback(async () => {
+    if (selectedPageIds.size === 0) return;
     for (const stack of stacksRef.current) {
-      const idx = stack.pages.findIndex((p) => p.id === focusedPageId);
-      if (idx !== -1) {
-        await handleExtractPageImages(stack.id, idx);
-        return;
+      for (let i = 0; i < stack.pages.length; i++) {
+        if (selectedPageIds.has(stack.pages[i].id)) {
+          await handleExtractPageImages(stack.id, i);
+          return;
+        }
       }
     }
-  }, [focusedPageId, stacksRef, handleExtractPageImages]);
+  }, [selectedPageIds, stacksRef, handleExtractPageImages]);
 
   return {
     isExtracting,
@@ -125,6 +126,6 @@ export function useImageExtraction({
     handleExtractPageImages,
     handleExtractStackImages,
     handleExtractAllImages,
-    handleExtractFocusedPage,
+    handleExtractSelectedPages,
   };
 }
