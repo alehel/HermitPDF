@@ -12,7 +12,7 @@ export async function generateMetadata({
   const t = await getTranslations({ locale, namespace: "splitWizard" });
   return {
     title: `${t("title")} — HermitPDF`,
-    description: "Split a PDF into multiple files by page ranges. Free, private, and runs entirely in your browser.",
+    description: t("metaDescription"),
   };
 }
 

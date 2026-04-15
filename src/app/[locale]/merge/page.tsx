@@ -12,7 +12,7 @@ export async function generateMetadata({
   const t = await getTranslations({ locale, namespace: "mergeWizard" });
   return {
     title: `${t("title")} — HermitPDF`,
-    description: "Merge multiple PDF files into one document. Free, private, and runs entirely in your browser.",
+    description: t("metaDescription"),
   };
 }
 

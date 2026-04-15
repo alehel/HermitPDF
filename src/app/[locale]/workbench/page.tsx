@@ -12,7 +12,7 @@ export async function generateMetadata({
   const t = await getTranslations({ locale, namespace: "documentPanel" });
   return {
     title: `${t("title")} — HermitPDF`,
-    description: "Full PDF editor with drag-and-drop page management, reordering, rotation, and multi-file export. Runs entirely in your browser.",
+    description: t("metaDescription"),
   };
 }
 

@@ -10,6 +10,7 @@
   },
   "documentPanel": {
     "title": "Workbench",
+    "metaDescription": "Full PDF editor with drag-and-drop page management, reordering, rotation, and multi-file export. Runs entirely in your browser.",
     "subtitle": "Files never leave your browser",
     "addFiles": "Add files",
     "dropMessage": "Drop PDFs here or",
@@ -103,6 +104,7 @@
   },
   "mergeWizard": {
     "title": "Merge PDFs",
+    "metaDescription": "Merge multiple PDF files into one document. Free, private, and runs entirely in your browser.",
     "dropTitle": "Drop PDF files here",
     "dropSubtitle": "or click to browse",
     "privacyNote": "Files are processed entirely in your browser. Nothing is uploaded.",
@@ -120,6 +122,7 @@
   },
   "splitWizard": {
     "title": "Split PDF",
+    "metaDescription": "Split a PDF into multiple files by page ranges. Free, private, and runs entirely in your browser.",
     "dropTitle": "Drop a PDF file here",
     "dropSubtitle": "or click to browse",
     "privacyNote": "Files are processed entirely in your browser. Nothing is uploaded.",
@@ -153,6 +156,7 @@
   },
   "batesWizard": {
     "title": "Bates Numbering",
+    "metaDescription": "Add Bates numbering to PDF documents. Free, private, and runs entirely in your browser.",
     "dropTitle": "Drop PDF files here",
     "dropSubtitle": "or click to browse",
     "privacyNote": "Files are processed entirely in your browser. Nothing is uploaded.",
@@ -190,6 +194,7 @@
   },
   "extractImagesWizard": {
     "title": "Extract Images",
+    "metaDescription": "Extract all embedded images from a PDF file. Free, private, and runs entirely in your browser.",
     "dropTitle": "Drop a PDF file here",
     "dropSubtitle": "or click to browse",
     "privacyNote": "Files are processed entirely in your browser. Nothing is uploaded.",
