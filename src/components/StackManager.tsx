@@ -100,10 +100,10 @@ export function StackManager() {
     stackId: string;
     pageIndex?: number;
   } | null>(null);
-  const [focusedPageId, setFocusedPageId] = useState<string | null>(null);
+  const [selectedPageIds, setSelectedPageIds] = useState<Set<string>>(new Set());
+  const [anchorPageId, setAnchorPageId] = useState<string | null>(null);
   const [scrollToPageId, setScrollToPageId] = useState<string | null>(null);
   const [thumbnailVersions, setThumbnailVersions] = useState<Map<string, number>>(new Map());
-  const [focusLevel, setFocusLevel] = useState<"stack" | "page">("page");
   const [activeTab, setActiveTab] = useState<"documents" | "preview">("documents");
 
   // Warn before navigating away when documents are loaded
@@ -117,10 +117,13 @@ export function StackManager() {
     return () => window.removeEventListener("beforeunload", handler);
   }, [hasStacks]);
 
-  const focusedStackId = useMemo(() => {
-    if (!focusedPageId) return null;
-    return stacks.find((s) => s.pages.some((p) => p.id === focusedPageId))?.id ?? null;
-  }, [stacks, focusedPageId]);
+  const hasSelection = selectedPageIds.size > 0;
+
+  // Flat ordered list of all page IDs for Shift-click range selection
+  const flatPageIds = useMemo(
+    () => stacks.flatMap((s) => s.pages.map((p) => p.id)),
+    [stacks]
+  );
 
   const containerRef = useRef<HTMLDivElement>(null);
   const {
@@ -140,8 +143,8 @@ export function StackManager() {
     handleExtractPageImages,
     handleExtractStackImages,
     handleExtractAllImages,
-    handleExtractFocusedPage,
-  } = useImageExtraction({ stacksRef, focusedPageId });
+    handleExtractSelectedPages,
+  } = useImageExtraction({ stacksRef, selectedPageIds });
 
   const showSideBySide = !isNarrow && previewVisible;
   const stackPanelWidth = showSideBySide && previewWidth > 0
@@ -160,10 +163,14 @@ export function StackManager() {
     });
   }, []);
 
-  const clearFocusedPageIfRemoved = useCallback(
+  const pruneSelectionAfterRestore = useCallback(
     (restoredStacks: PageStack[]) => {
-      const pageIds = new Set(restoredStacks.flatMap((s) => s.pages.map((p) => p.id)));
-      setFocusedPageId((prev) => (prev && pageIds.has(prev) ? prev : null));
+      const survivingIds = new Set(restoredStacks.flatMap((s) => s.pages.map((p) => p.id)));
+      setSelectedPageIds((prev) => {
+        const next = new Set([...prev].filter((id) => survivingIds.has(id)));
+        return next.size === prev.size ? prev : next;
+      });
+      setAnchorPageId((prev) => (prev && survivingIds.has(prev) ? prev : null));
     },
     []
   );
@@ -175,9 +182,9 @@ export function StackManager() {
       const changed = reconcileThumbnails(prevStacks, restored.stacks);
       if (changed.length > 0) invalidateThumbnails(changed);
 
-      clearFocusedPageIfRemoved(restored.stacks);
+      pruneSelectionAfterRestore(restored.stacks);
     },
-    [invalidateThumbnails, clearFocusedPageIfRemoved]
+    [invalidateThumbnails, pruneSelectionAfterRestore]
   );
 
   const handleUndo = useCallback(() => {
@@ -275,9 +282,17 @@ export function StackManager() {
   }, [commit]);
 
   const handleRemoveSelected = useCallback(() => {
-    if (!focusedStackId) return;
-    handleRemoveStack(focusedStackId);
-  }, [focusedStackId, handleRemoveStack]);
+    if (selectedPageIds.size === 0) return;
+    const nextStacks = stacksRef.current
+      .map((s) => ({ ...s, pages: s.pages.filter((p) => !selectedPageIds.has(p.id)) }))
+      .filter((s) => s.pages.length > 0);
+    const nextExpanded = new Set([...expandedRef.current].filter(
+      (id) => nextStacks.some((s) => s.id === id)
+    ));
+    commit({ stacks: nextStacks, expandedStackIds: nextExpanded });
+    setSelectedPageIds(new Set());
+    setAnchorPageId(null);
+  }, [selectedPageIds, commit]);
 
   const handleContextMenu = useCallback((e: React.MouseEvent, stackId: string) => {
     setContextMenu({ x: e.clientX, y: e.clientY, stackId });
@@ -311,21 +326,81 @@ export function StackManager() {
     commit({ stacks: nextStacks, expandedStackIds: nextExpanded });
   }, [commit]);
 
-  const handleScrollToPage = useCallback((pageId: string) => {
-    setFocusLevel("page");
-    setFocusedPageId(pageId);
-    setScrollToPageId(pageId);
-    if (isNarrow) setActiveTab("preview");
-  }, [isNarrow]);
+  const handlePageClick = useCallback((pageId: string, e: React.MouseEvent) => {
+    if (e.shiftKey && anchorPageId) {
+      // Range select between anchor and clicked page
+      const anchorIdx = flatPageIds.indexOf(anchorPageId);
+      const targetIdx = flatPageIds.indexOf(pageId);
+      if (anchorIdx !== -1 && targetIdx !== -1) {
+        const start = Math.min(anchorIdx, targetIdx);
+        const end = Math.max(anchorIdx, targetIdx);
+        const range = flatPageIds.slice(start, end + 1);
+        setSelectedPageIds(new Set(range));
+      }
+      // Shift-click does NOT move anchor
+    } else if (e.metaKey || e.ctrlKey) {
+      // Toggle individual page
+      setSelectedPageIds((prev) => {
+        const next = new Set(prev);
+        if (next.has(pageId)) next.delete(pageId);
+        else next.add(pageId);
+        return next;
+      });
+      setAnchorPageId(pageId);
+    } else {
+      // Plain click — single select
+      setSelectedPageIds(new Set([pageId]));
+      setAnchorPageId(pageId);
+      setScrollToPageId(pageId);
+      if (isNarrow) setActiveTab("preview");
+    }
+  }, [isNarrow, anchorPageId, flatPageIds]);
 
-  const handleStackSelect = useCallback((stackId: string) => {
+  const handleStackClick = useCallback((stackId: string, e: React.MouseEvent) => {
     const stack = stacksRef.current.find((s) => s.id === stackId);
     if (!stack || stack.pages.length === 0) return;
-    setFocusLevel("stack");
-    setFocusedPageId(stack.pages[0].id);
-    setScrollToPageId(stack.pages[0].id);
-    if (isNarrow) setActiveTab("preview");
-  }, [isNarrow]);
+    const stackPageIds = stack.pages.map((p) => p.id);
+
+    if (e.shiftKey && anchorPageId) {
+      // Range select stacks between anchor stack and clicked stack
+      const anchorStackIdx = stacksRef.current.findIndex(
+        (s) => s.pages.some((p) => p.id === anchorPageId)
+      );
+      const targetStackIdx = stacksRef.current.findIndex((s) => s.id === stackId);
+      if (anchorStackIdx !== -1 && targetStackIdx !== -1) {
+        const start = Math.min(anchorStackIdx, targetStackIdx);
+        const end = Math.max(anchorStackIdx, targetStackIdx);
+        const rangePageIds = stacksRef.current
+          .slice(start, end + 1)
+          .flatMap((s) => s.pages.map((p) => p.id));
+        setSelectedPageIds(new Set(rangePageIds));
+      }
+    } else if (e.metaKey || e.ctrlKey) {
+      // Toggle all pages in stack
+      setSelectedPageIds((prev) => {
+        const next = new Set(prev);
+        const allSelected = stackPageIds.every((id) => next.has(id));
+        if (allSelected) {
+          stackPageIds.forEach((id) => next.delete(id));
+        } else {
+          stackPageIds.forEach((id) => next.add(id));
+        }
+        return next;
+      });
+      setAnchorPageId(stackPageIds[0]);
+    } else {
+      // Plain click — select whole stack
+      setSelectedPageIds(new Set(stackPageIds));
+      setAnchorPageId(stackPageIds[0]);
+      setScrollToPageId(stackPageIds[0]);
+      if (isNarrow) setActiveTab("preview");
+    }
+  }, [isNarrow, anchorPageId]);
+
+  const handleDeselect = useCallback(() => {
+    setSelectedPageIds(new Set());
+    setAnchorPageId(null);
+  }, []);
 
   const handleReorderStack = useCallback((fromIndex: number, toIndex: number) => {
     const copy = [...stacksRef.current];
@@ -423,13 +498,8 @@ export function StackManager() {
   }, [commit, invalidateThumbnails]);
 
   const resolveRotationTargets = useCallback((): string[] | null => {
-    if (focusLevel === "stack" && focusedStackId) {
-      const stack = stacksRef.current.find((s) => s.id === focusedStackId);
-      return stack ? stack.pages.map((p) => p.id) : null;
-    }
-    if (focusedPageId) return [focusedPageId];
-    return null;
-  }, [focusLevel, focusedStackId, focusedPageId]);
+    return selectedPageIds.size > 0 ? Array.from(selectedPageIds) : null;
+  }, [selectedPageIds]);
 
   const handleRotate = useCallback((degrees: number) => {
     const pageIds = resolveRotationTargets();
@@ -489,35 +559,34 @@ export function StackManager() {
     onExtractPageToList: handleExtractPageToList,
     onInsertStackIntoExpanded: handleInsertStackIntoExpanded,
     onMovePageBetweenStacks: handleMovePageBetweenStacks,
-    focusedStackId,
-    focusedPageId,
-    focusLevel,
-    onScrollToPage: handleScrollToPage,
-    onStackSelect: handleStackSelect,
+    selectedPageIds,
+    onPageClick: handlePageClick,
+    onStackClick: handleStackClick,
     onRotateLeft: () => handleRotate(-90),
     onRotateRight: () => handleRotate(90),
-    rotateDisabled: !focusedPageId,
+    rotateDisabled: !hasSelection,
     thumbnailVersions,
     onExtractAllImages: handleExtractAllImages,
-    onExtractFocusedPage: handleExtractFocusedPage,
+    onExtractSelectedPages: handleExtractSelectedPages,
     onExtractPageImages: handleExtractPageImages,
     onExtractStackImages: handleExtractStackImages,
     extractAllDisabled: stacks.length === 0,
-    extractPageDisabled: !focusedPageId,
+    extractPageDisabled: !hasSelection,
     isExtracting,
     onRemoveSelected: handleRemoveSelected,
-    removeSelectedDisabled: !focusedStackId,
+    removeSelectedDisabled: !hasSelection,
+    onDeselect: handleDeselect,
   }), [
     stacks, handleFilesAdded, handleRemoveStack, handleClearAll,
     handleReorderStack, handleContextMenu, handlePageContextMenu,
     handleSplitStack, contextMenu, viewMode, expandedStackIds,
     handleToggleExpand, handleReorderPage, handleExtractPageToList,
     handleInsertStackIntoExpanded, handleMovePageBetweenStacks,
-    focusedStackId, focusedPageId, focusLevel, handleScrollToPage,
-    handleStackSelect, handleRotate, thumbnailVersions,
-    handleExtractAllImages, handleExtractFocusedPage,
+    selectedPageIds, handlePageClick, handleStackClick,
+    handleRotate, thumbnailVersions,
+    handleExtractAllImages, handleExtractSelectedPages,
     handleExtractPageImages, handleExtractStackImages, isExtracting,
-    handleRemoveSelected,
+    handleRemoveSelected, handleDeselect, hasSelection,
   ]);
 
   return (
@@ -563,7 +632,6 @@ export function StackManager() {
               stacks={stacks}
               scrollToPageId={scrollToPageId}
               onScrollComplete={() => setScrollToPageId(null)}
-              onFocusedPageChange={setFocusedPageId}
               thumbnailVersions={thumbnailVersions}
             />
           )
@@ -588,7 +656,6 @@ export function StackManager() {
                   style={previewWidth > 0 ? { width: previewWidth, flex: "none" } : { flex: "0.4 1 0%" }}
                   scrollToPageId={scrollToPageId}
                   onScrollComplete={() => setScrollToPageId(null)}
-                  onFocusedPageChange={setFocusedPageId}
                   thumbnailVersions={thumbnailVersions}
                 />
               </>

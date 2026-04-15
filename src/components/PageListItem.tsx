@@ -17,7 +17,7 @@ interface PageListItemProps {
   layout?: "row" | "tile";
   style?: React.CSSProperties;
   isFocused?: boolean;
-  onClick?: (pageId: string) => void;
+  onClick?: (pageId: string, e: React.MouseEvent) => void;
   version?: number;
 }
 
@@ -54,7 +54,7 @@ export const PageListItem = memo(function PageListItem({
     ? (e: React.MouseEvent) => { e.preventDefault(); onContextMenu(e, stackId, pageIndex); }
     : undefined;
 
-  const handleClick = () => onClick?.(pageRef.id);
+  const handleClick = (e: React.MouseEvent) => onClick?.(pageRef.id, e);
 
   if (layout === "tile") {
     return (

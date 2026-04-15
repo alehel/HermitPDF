@@ -22,7 +22,6 @@ interface WorkspaceProps {
   style?: React.CSSProperties;
   scrollToPageId?: string | null;
   onScrollComplete?: () => void;
-  onFocusedPageChange?: (pageId: string | null) => void;
   thumbnailVersions?: Map<string, number>;
 }
 
@@ -32,7 +31,6 @@ export function Workspace({
   style,
   scrollToPageId,
   onScrollComplete,
-  onFocusedPageChange,
   thumbnailVersions,
 }: WorkspaceProps) {
   const t = useTranslations("workspace");
@@ -75,8 +73,6 @@ export function Workspace({
     }
   }, [imageContextMenu, stacks]);
 
-  const lastReportedRef = useRef<string | null>(null);
-
   const items = useMemo<WorkspaceItem[]>(() => {
     const result: WorkspaceItem[] = [];
     stacks.forEach((stack, si) => {
@@ -104,31 +100,6 @@ export function Workspace({
     },
   });
 
-  // Detect which page is in focus based on scroll position
-  const handleScroll = useCallback(() => {
-    if (!onFocusedPageChange) return;
-    const el = scrollRef.current;
-    if (!el) return;
-
-    const scrollTop = el.scrollTop;
-    const threshold = scrollTop + el.clientHeight * 0.3;
-
-    // Find the topmost page item that overlaps the upper portion of the viewport
-    let focusedId: string | null = null;
-    for (const vItem of virtualizer.getVirtualItems()) {
-      const item = items[vItem.index];
-      if (item.kind === "page" && vItem.start <= threshold && vItem.end > scrollTop) {
-        focusedId = item.pageRef.id;
-        break;
-      }
-    }
-
-    if (focusedId && focusedId !== lastReportedRef.current) {
-      lastReportedRef.current = focusedId;
-      onFocusedPageChange(focusedId);
-    }
-  }, [items, virtualizer, onFocusedPageChange]);
-
   // Scroll to a specific page when requested
   useEffect(() => {
     if (!scrollToPageId) return;
@@ -137,8 +108,6 @@ export function Workspace({
     );
     if (index >= 0) {
       virtualizer.scrollToIndex(index, { align: "start" });
-      lastReportedRef.current = scrollToPageId;
-      onFocusedPageChange?.(scrollToPageId);
     }
     onScrollComplete?.();
   }, [scrollToPageId]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -165,7 +134,6 @@ export function Workspace({
     <div style={style} className="flex flex-1 flex-col overflow-hidden">
       <div
         ref={scrollRef}
-        onScroll={handleScroll}
         className={clsx(
           "flex-1 overflow-y-auto px-10",
           isResizing && "pointer-events-none"

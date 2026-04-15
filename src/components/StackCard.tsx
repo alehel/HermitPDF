@@ -30,11 +30,9 @@ function StackedLayers({ size }: { size: "sm" | "lg" }) {
   );
 }
 
-function focusBorderClass(isFocused: boolean | undefined, focusedAsContainer: boolean | undefined, isDragging: boolean) {
-  if (isFocused) {
-    return focusedAsContainer
-      ? "border-primary/30 ring-2 ring-primary/30"
-      : "border-primary ring-2 ring-primary";
+function selectionBorderClass(isSelected: boolean | undefined, isDragging: boolean) {
+  if (isSelected) {
+    return "border-primary ring-2 ring-primary";
   }
   return "border-border" + (!isDragging ? " hover:border-primary/50" : "");
 }
@@ -50,9 +48,8 @@ interface StackCardProps {
   onContextMenu: (e: React.MouseEvent, stackId: string) => void;
   isExpanded?: boolean;
   onToggleExpand?: (id: string) => void;
-  isFocused?: boolean;
-  focusLevel?: "stack" | "page";
-  onClick?: (stackId: string) => void;
+  isSelected?: boolean;
+  onClick?: (stackId: string, e: React.MouseEvent) => void;
 }
 
 export const StackCard = memo(function StackCard({
@@ -66,13 +63,11 @@ export const StackCard = memo(function StackCard({
   onContextMenu,
   isExpanded,
   onToggleExpand,
-  isFocused,
-  focusLevel,
+  isSelected,
   onClick,
 }: StackCardProps) {
   const t = useTranslations("documentItem");
   const isStack = stack.pages.length > 1;
-  const focusedAsContainer = isFocused && focusLevel === "page";
 
   const dragProps = {
     draggable: true,
@@ -112,7 +107,7 @@ export const StackCard = memo(function StackCard({
   const removeButton = (
     <button
       type="button"
-      onClick={() => onRemove(stack.id)}
+      onClick={(e) => { e.stopPropagation(); onRemove(stack.id); }}
       className={clsx(
         "shrink-0 cursor-pointer rounded p-1 text-muted-foreground opacity-0 transition-opacity hover:text-foreground group-hover:opacity-100",
         layout === "grid" && "bg-card/80 !p-0.5"
@@ -125,7 +120,7 @@ export const StackCard = memo(function StackCard({
     </button>
   );
 
-  const handleClick = () => onClick?.(stack.id);
+  const handleClick = (e: React.MouseEvent) => onClick?.(stack.id, e);
 
   if (layout === "grid") {
     return (
@@ -144,7 +139,7 @@ export const StackCard = memo(function StackCard({
             {/* Front card */}
             <div className={clsx(
               "relative rounded-lg border bg-card p-2 shadow-[0_2px_8px_rgba(0,0,0,0.1)] dark:shadow-[0_2px_8px_rgba(0,0,0,0.3)]",
-              focusBorderClass(isFocused, focusedAsContainer, isDragging),
+              selectionBorderClass(isSelected, isDragging),
             )}>
               <div className="flex items-center justify-center overflow-hidden rounded">
                 <PdfThumbnail pageRef={stack.pages[0]} width={140} />
@@ -161,7 +156,7 @@ export const StackCard = memo(function StackCard({
         ) : (
           <div className={clsx(
             "rounded-lg border bg-card p-2 shadow-[0_2px_8px_rgba(0,0,0,0.1)] dark:shadow-[0_2px_8px_rgba(0,0,0,0.3)]",
-            focusBorderClass(isFocused, focusedAsContainer, isDragging),
+            selectionBorderClass(isSelected, isDragging),
           )}>
             <div className="flex items-center justify-center overflow-hidden rounded">
               <PdfThumbnail pageRef={stack.pages[0]} width={140} />
@@ -180,7 +175,7 @@ export const StackCard = memo(function StackCard({
       className={clsx(
         "group flex cursor-grab select-none items-center gap-2.5 rounded-lg p-2.5 transition-colors active:cursor-grabbing",
         isDragging ? "opacity-0" : "hover:bg-background",
-        isFocused && (focusedAsContainer ? "ring-2 ring-primary/30" : "ring-2 ring-primary")
+        isSelected && "ring-2 ring-primary"
       )}
       onContextMenu={contextMenuHandler}
       onClick={handleClick}
