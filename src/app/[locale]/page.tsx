@@ -4,9 +4,8 @@ import Image from "next/image";
 import { useTranslations } from "next-intl";
 import { Link } from "@/i18n/navigation";
 import { useTheme } from "@/components/ThemeProvider";
+import { ThemeToggle } from "@/components/ThemeToggle";
 import {
-  MoonIcon,
-  SunIcon,
   MergeIcon,
   ScissorsIcon,
   ExtractIcon,
@@ -16,21 +15,6 @@ import {
 } from "@/components/Icons";
 import { QuickActionCard } from "@/components/QuickActionCard";
 import { Footer } from "@/components/Footer";
-
-function ThemeToggle() {
-  const t = useTranslations("homeScreen");
-  const { theme, toggleTheme } = useTheme();
-  return (
-    <button
-      type="button"
-      onClick={toggleTheme}
-      className="rounded-lg p-2 text-muted-foreground transition-colors hover:bg-border hover:text-foreground"
-      title={t("toggleTheme")}
-    >
-      {theme === "light" ? <MoonIcon /> : <SunIcon />}
-    </button>
-  );
-}
 
 export default function Home() {
   const t = useTranslations("homeScreen");
@@ -47,7 +31,7 @@ export default function Home() {
           height={23}
           priority
         />
-        <ThemeToggle />
+        <ThemeToggle title={t("toggleTheme")} />
       </header>
 
       {/* Main content */}

@@ -4,11 +4,12 @@ import Image from "next/image";
 import { useTranslations } from "next-intl";
 import { Link } from "@/i18n/navigation";
 import { useTheme } from "./ThemeProvider";
-import { MoonIcon, SunIcon, ArrowLeftIcon } from "./Icons";
+import { ArrowLeftIcon } from "./Icons";
+import { ThemeToggle } from "./ThemeToggle";
 
 export function WizardHeader() {
   const t = useTranslations("common");
-  const { theme, toggleTheme } = useTheme();
+  const { theme } = useTheme();
 
   return (
     <header className="flex items-center gap-3 border-b border-border px-6 py-4">
@@ -32,14 +33,7 @@ export function WizardHeader() {
         />
       </Link>
       <div className="ml-auto">
-        <button
-          type="button"
-          onClick={toggleTheme}
-          className="rounded-lg p-2 text-muted-foreground transition-colors hover:bg-border hover:text-foreground"
-          title={t("toggleTheme")}
-        >
-          {theme === "light" ? <MoonIcon /> : <SunIcon />}
-        </button>
+        <ThemeToggle title={t("toggleTheme")} />
       </div>
     </header>
   );
