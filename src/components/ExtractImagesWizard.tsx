@@ -216,7 +216,7 @@ export function ExtractImagesWizard() {
         />
       )}
 
-      <WizardContainer icon={<ExtractIcon className="!h-4 !w-4" />} title={t("title")} maxWidth="max-w-2xl">
+      <WizardContainer icon={<ExtractIcon className="!h-4 !w-4" />} title={t("title")} >
           <FileCard
             name={file.name}
             subtitle={`${t("pageCount", { count: file.pageCount })} \u00b7 ${formatSize(file.fileSize)}`}

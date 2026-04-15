@@ -6,7 +6,6 @@ interface WizardContainerProps {
   title: string;
   badge?: ReactNode;
   empty?: boolean;
-  maxWidth?: string;
   children: ReactNode;
 }
 
@@ -15,7 +14,6 @@ export function WizardContainer({
   title,
   badge,
   empty,
-  maxWidth = "max-w-xl",
   children,
 }: WizardContainerProps) {
   if (empty) {
@@ -29,7 +27,7 @@ export function WizardContainer({
 
   return (
     <main className="flex flex-1 flex-col items-center px-6 py-8">
-      <div className={`w-full ${maxWidth}`}>
+      <div className="w-full max-w-2xl">
         <WizardTitle icon={icon} title={title} badge={badge} />
         {children}
       </div>
