@@ -8,7 +8,6 @@ import { DismissibleBanner } from "./DismissibleBanner";
 import { WizardHeader } from "./WizardHeader";
 import { WizardContainer } from "./WizardContainer";
 import { FileCard } from "./FileCard";
-import { WizardFooter } from "./WizardFooter";
 import { WizardFile, ExtractedImage } from "@/lib/types";
 import { formatSize } from "@/lib/formatSize";
 import { releaseWizardFile } from "@/lib/releaseWizardFile";
@@ -149,51 +148,6 @@ export function ExtractImagesWizard() {
     />
   );
 
-  /* ================================================================ */
-  /*  Empty state                                                      */
-  /* ================================================================ */
-  if (!file) {
-    return (
-      <div className="flex min-h-screen flex-col bg-background">
-        <WizardHeader />
-        {fileInput}
-
-        {rejectedFiles.length > 0 && (
-          <DismissibleBanner
-            message={t("rejectedFiles", { files: rejectedFiles.join(", ") })}
-            dismissLabel={t("dismiss")}
-            onDismiss={() => setRejectedFiles([])}
-          />
-        )}
-        {passwordProtectedFiles.length > 0 && (
-          <DismissibleBanner
-            message={t("passwordProtectedFiles", {
-              files: passwordProtectedFiles.join(", "),
-            })}
-            dismissLabel={t("dismiss")}
-            onDismiss={() => setPasswordProtectedFiles([])}
-          />
-        )}
-
-        <WizardContainer icon={<ExtractIcon className="!h-4 !w-4" />} title={t("title")} empty>
-          <DropZone
-            title={t("dropTitle")}
-            subtitle={t("dropSubtitle")}
-            privacyNote={t("privacyNote")}
-            onClick={openFilePicker}
-            onDragOver={handleDropZoneDragOver}
-            onDragLeave={handleDropZoneDragLeave}
-            onDrop={handleDropZoneDrop}
-            isDragOver={isDragOver}
-          />
-        </WizardContainer>
-      </div>
-    );
-  }
-
-  /* ================================================================ */
-  /*  Populated state                                                  */
-  /* ================================================================ */
   return (
     <div className="flex min-h-screen flex-col bg-background">
       <WizardHeader />
@@ -216,81 +170,96 @@ export function ExtractImagesWizard() {
         />
       )}
 
-      <WizardContainer icon={<ExtractIcon className="!h-4 !w-4" />} title={t("title")} >
-          <FileCard
-            name={file.name}
-            subtitle={`${t("pageCount", { count: file.pageCount })} \u00b7 ${formatSize(file.fileSize)}`}
-            onRemove={handleRemove}
-            removeTitle={t("remove")}
+      <WizardContainer
+        icon={<ExtractIcon className="!h-4 !w-4" />}
+        title={t("title")}
+        empty={!file}
+        footer={extractedImages.length > 0 ? {
+          statusText: t("imagesFound", { count: extractedImages.length }),
+          buttonLabel: t("downloadAll"),
+          onButtonClick: handleDownloadAll,
+        } : undefined}
+      >
+        {!file ? (
+          <DropZone
+            title={t("dropTitle")}
+            subtitle={t("dropSubtitle")}
+            privacyNote={t("privacyNote")}
+            onClick={openFilePicker}
+            onDragOver={handleDropZoneDragOver}
+            onDragLeave={handleDropZoneDragLeave}
+            onDrop={handleDropZoneDrop}
+            isDragOver={isDragOver}
           />
+        ) : (
+          <>
+            <FileCard
+              name={file.name}
+              subtitle={`${t("pageCount", { count: file.pageCount })} \u00b7 ${formatSize(file.fileSize)}`}
+              onRemove={handleRemove}
+              removeTitle={t("remove")}
+            />
 
-          {isExtracting && (
-            <div className="mt-6 flex items-center justify-center gap-2 py-8">
-              <div className="h-5 w-5 animate-spin rounded-full border-2 border-primary border-t-transparent" />
-              <p className="text-sm text-muted-foreground">{t("extracting")}</p>
-            </div>
-          )}
+            {isExtracting && (
+              <div className="mt-6 flex items-center justify-center gap-2 py-8">
+                <div className="h-5 w-5 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+                <p className="text-sm text-muted-foreground">{t("extracting")}</p>
+              </div>
+            )}
 
-          {noImagesFound && (
-            <div className="mt-6 rounded-xl border border-red-400/50 bg-red-500/5 p-4 text-center">
-              <p className="text-sm text-red-500">{t("noImagesFound")}</p>
-            </div>
-          )}
+            {noImagesFound && (
+              <div className="mt-6 rounded-xl border border-red-400/50 bg-red-500/5 p-4 text-center">
+                <p className="text-sm text-red-500">{t("noImagesFound")}</p>
+              </div>
+            )}
 
-          {extractedImages.length > 0 && (
-            <div className="mt-6">
-              <p className="mb-3 text-xs font-medium uppercase tracking-widest text-muted-foreground">
-                {t("imagesFound", { count: extractedImages.length })}
-              </p>
-              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-                {extractedImages.map((img, i) => (
-                  <div
-                    key={`p${img.pageIndex}_i${img.imageIndex}`}
-                    className="group/card flex aspect-square flex-col overflow-hidden rounded-xl border border-border bg-card"
-                  >
-                    <button
-                      type="button"
-                      onClick={() => setLightboxIndex(i)}
-                      className="flex min-h-0 flex-1 cursor-zoom-in items-center justify-center overflow-hidden bg-accent/50 p-2"
+            {extractedImages.length > 0 && (
+              <div className="mt-6">
+                <p className="mb-3 text-xs font-medium uppercase tracking-widest text-muted-foreground">
+                  {t("imagesFound", { count: extractedImages.length })}
+                </p>
+                <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+                  {extractedImages.map((img, i) => (
+                    <div
+                      key={`p${img.pageIndex}_i${img.imageIndex}`}
+                      className="group/card flex aspect-square flex-col overflow-hidden rounded-xl border border-border bg-card"
                     >
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img
-                        src={previewUrls[i]}
-                        alt={t("imageAlt", {
-                          page: img.pageIndex + 1,
-                          index: img.imageIndex + 1,
-                        })}
-                        className="pointer-events-none max-h-full max-w-full object-contain"
-                      />
-                    </button>
-                    <div className="flex shrink-0 items-center justify-between px-3 py-2">
-                      <span className="text-xs text-muted-foreground">
-                        {img.width}&times;{img.height}
-                      </span>
                       <button
                         type="button"
-                        onClick={() => handleDownloadOne(img)}
-                        className="flex items-center rounded-lg px-2 py-1 text-xs font-medium text-primary transition-colors hover:bg-primary/10"
-                        title={t("downloadImage")}
+                        onClick={() => setLightboxIndex(i)}
+                        className="flex min-h-0 flex-1 cursor-zoom-in items-center justify-center overflow-hidden bg-accent/50 p-2"
                       >
-                        <DownloadIcon />
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                          src={previewUrls[i]}
+                          alt={t("imageAlt", {
+                            page: img.pageIndex + 1,
+                            index: img.imageIndex + 1,
+                          })}
+                          className="pointer-events-none max-h-full max-w-full object-contain"
+                        />
                       </button>
+                      <div className="flex shrink-0 items-center justify-between px-3 py-2">
+                        <span className="text-xs text-muted-foreground">
+                          {img.width}&times;{img.height}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => handleDownloadOne(img)}
+                          className="flex items-center rounded-lg px-2 py-1 text-xs font-medium text-primary transition-colors hover:bg-primary/10"
+                          title={t("downloadImage")}
+                        >
+                          <DownloadIcon />
+                        </button>
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  ))}
+                </div>
               </div>
-            </div>
-          )}
+            )}
+          </>
+        )}
       </WizardContainer>
-
-      {extractedImages.length > 0 && (
-        <WizardFooter
-          statusText={t("imagesFound", { count: extractedImages.length })}
-          buttonLabel={t("downloadAll")}
-          onButtonClick={handleDownloadAll}
-          maxWidth="max-w-2xl"
-        />
-      )}
 
       {lightboxIndex !== null && (
         <div
@@ -303,12 +272,12 @@ export function ExtractImagesWizard() {
           >
             <div className="mb-3 flex items-center gap-3">
               <span className="text-sm text-white/70">
-                {extractedImages[lightboxIndex].width}&times;
-                {extractedImages[lightboxIndex].height}
+                {extractedImages[lightboxIndex!].width}&times;
+                {extractedImages[lightboxIndex!].height}
               </span>
               <button
                 type="button"
-                onClick={() => handleDownloadOne(extractedImages[lightboxIndex])}
+                onClick={() => handleDownloadOne(extractedImages[lightboxIndex!])}
                 className="flex items-center gap-1.5 rounded-lg bg-white/10 px-3 py-1.5 text-sm font-medium text-white transition-colors hover:bg-white/20"
               >
                 <DownloadIcon />
@@ -322,10 +291,10 @@ export function ExtractImagesWizard() {
             >
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
-                src={previewUrls[lightboxIndex]}
+                src={previewUrls[lightboxIndex!]}
                 alt={t("imageAlt", {
-                  page: extractedImages[lightboxIndex].pageIndex + 1,
-                  index: extractedImages[lightboxIndex].imageIndex + 1,
+                  page: extractedImages[lightboxIndex!].pageIndex + 1,
+                  index: extractedImages[lightboxIndex!].imageIndex + 1,
                 })}
                 className="pointer-events-none max-h-[80vh] max-w-[90vw] rounded-lg object-contain"
               />

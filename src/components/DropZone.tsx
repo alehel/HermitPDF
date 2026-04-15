@@ -34,7 +34,7 @@ export function DropZone({
         className={`group flex w-full flex-col items-center gap-4 rounded-2xl border-2 border-dashed px-8 transition-all ${
           fill
             ? "flex-1 justify-center"
-            : "max-w-lg py-14"
+            : "py-14"
         } ${
           isDragOver
             ? "border-primary/40 bg-accent/20"

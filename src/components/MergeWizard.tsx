@@ -8,7 +8,6 @@ import { DismissibleBanner } from "./DismissibleBanner";
 import { WizardHeader } from "./WizardHeader";
 import { WizardContainer } from "./WizardContainer";
 import { FileCard } from "./FileCard";
-import { WizardFooter } from "./WizardFooter";
 import { WizardFile } from "@/lib/types";
 import { formatSize } from "@/lib/formatSize";
 import { releaseWizardFile } from "@/lib/releaseWizardFile";
@@ -153,51 +152,8 @@ export function MergeWizard() {
     </span>
   ) : undefined;
 
-  /* ================================================================ */
-  /*  Empty state                                                      */
-  /* ================================================================ */
-  if (files.length === 0) {
-    return (
-      <div className="flex min-h-screen flex-col bg-background">
-        <WizardHeader />
-        {fileInput}
+  const isEmpty = files.length === 0;
 
-        {rejectedFiles.length > 0 && (
-          <DismissibleBanner
-            message={t("rejectedFiles", { files: rejectedFiles.join(", ") })}
-            dismissLabel={t("dismiss")}
-            onDismiss={() => setRejectedFiles([])}
-          />
-        )}
-        {passwordProtectedFiles.length > 0 && (
-          <DismissibleBanner
-            message={t("passwordProtectedFiles", {
-              files: passwordProtectedFiles.join(", "),
-            })}
-            dismissLabel={t("dismiss")}
-            onDismiss={() => setPasswordProtectedFiles([])}
-          />
-        )}
-
-        <WizardContainer icon={<MergeIcon className="!h-4 !w-4" />} title={t("title")} badge={wizardTitleBadge} empty>
-          <DropZone
-            title={t("dropTitle")}
-            subtitle={t("dropSubtitle")}
-            privacyNote={t("privacyNote")}
-            onClick={openFilePicker}
-            onDragOver={handleDropZoneDragOver}
-            onDragLeave={handleDropZoneDragLeave}
-            onDrop={handleDropZoneDrop}
-            isDragOver={isDragOver}
-          />
-        </WizardContainer>
-      </div>
-    );
-  }
-
-  /* ================================================================ */
-  /*  Populated state                                                  */
-  /* ================================================================ */
   return (
     <div className="flex min-h-screen flex-col bg-background">
       <WizardHeader />
@@ -220,70 +176,89 @@ export function MergeWizard() {
         />
       )}
 
-      <WizardContainer icon={<MergeIcon className="!h-4 !w-4" />} title={t("title")} badge={wizardTitleBadge}>
-          <p className="mb-3 text-xs font-medium uppercase tracking-widest text-muted-foreground">
-            {t("dragToReorder")}
-          </p>
-
-          <div
-            ref={listRef}
-            className="space-y-2"
-            onDragOver={sortableDragOver}
-            onDragLeave={handleDragLeave}
-            onDrop={sortableDrop}
-          >
-            {files.map((file, i) => (
-              <FileCard
-                key={file.id}
-                name={file.name}
-                subtitle={`${t("pageCount", { count: file.pageCount })} \u00b7 ${formatSize(file.fileSize)}`}
-                onRemove={() => handleRemove(file.id)}
-                extraProps={{ "data-merge-item": true } as React.HTMLAttributes<HTMLDivElement>}
-                dragHandle={{
-                  onDragStart: (e) => {
-                    e.dataTransfer.setData("text/x-merge-index", String(i));
-                    handleItemDragStart(i, e);
-                  },
-                  onDragEnd: handleItemDragEnd,
-                }}
-                orderBadge={
-                  <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-accent text-xs font-medium text-primary">
-                    {i + 1}
-                  </span>
-                }
-                style={getItemStyle(i)}
-                className={`group flex items-center gap-3 rounded-xl border bg-card p-4 transition-all ${
-                  dragIndex === i
-                    ? "border-primary opacity-0"
-                    : "border-border hover:border-primary/40 hover:shadow-sm"
-                }`}
-              />
-            ))}
-          </div>
-
-          <button
-            type="button"
+      <WizardContainer
+        icon={<MergeIcon className="!h-4 !w-4" />}
+        title={t("title")}
+        badge={wizardTitleBadge}
+        empty={isEmpty}
+        footer={!isEmpty ? {
+          statusText: <><span className="font-medium text-foreground">{totalPages}</span>{" "}{t("pagesTotal")}</>,
+          buttonLabel: isMerging ? t("merging") : t("mergeAndDownload"),
+          onButtonClick: handleMerge,
+          disabled: isMerging,
+        } : undefined}
+      >
+        {isEmpty ? (
+          <DropZone
+            title={t("dropTitle")}
+            subtitle={t("dropSubtitle")}
+            privacyNote={t("privacyNote")}
             onClick={openFilePicker}
             onDragOver={handleDropZoneDragOver}
             onDragLeave={handleDropZoneDragLeave}
             onDrop={handleDropZoneDrop}
-            className={`mt-3 flex w-full items-center justify-center gap-2 rounded-xl border border-dashed py-3 text-sm transition-all ${
-              isDragOver
-                ? "border-primary bg-accent/30 text-primary"
-                : "border-border bg-card/50 text-muted-foreground hover:border-primary hover:text-primary"
-            }`}
-          >
-            <PlusCircleIcon />
-            {t("addMoreFiles")}
-          </button>
-      </WizardContainer>
+            isDragOver={isDragOver}
+          />
+        ) : (
+          <>
+            <p className="mb-3 text-xs font-medium uppercase tracking-widest text-muted-foreground">
+              {t("dragToReorder")}
+            </p>
 
-      <WizardFooter
-        statusText={<><span className="font-medium text-foreground">{totalPages}</span>{" "}{t("pagesTotal")}</>}
-        buttonLabel={isMerging ? t("merging") : t("mergeAndDownload")}
-        onButtonClick={handleMerge}
-        disabled={isMerging}
-      />
+            <div
+              ref={listRef}
+              className="space-y-2"
+              onDragOver={sortableDragOver}
+              onDragLeave={handleDragLeave}
+              onDrop={sortableDrop}
+            >
+              {files.map((file, i) => (
+                <FileCard
+                  key={file.id}
+                  name={file.name}
+                  subtitle={`${t("pageCount", { count: file.pageCount })} \u00b7 ${formatSize(file.fileSize)}`}
+                  onRemove={() => handleRemove(file.id)}
+                  extraProps={{ "data-merge-item": true } as React.HTMLAttributes<HTMLDivElement>}
+                  dragHandle={{
+                    onDragStart: (e) => {
+                      e.dataTransfer.setData("text/x-merge-index", String(i));
+                      handleItemDragStart(i, e);
+                    },
+                    onDragEnd: handleItemDragEnd,
+                  }}
+                  orderBadge={
+                    <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-accent text-xs font-medium text-primary">
+                      {i + 1}
+                    </span>
+                  }
+                  style={getItemStyle(i)}
+                  className={`group flex items-center gap-3 rounded-xl border bg-card p-4 transition-all ${
+                    dragIndex === i
+                      ? "border-primary opacity-0"
+                      : "border-border hover:border-primary/40 hover:shadow-sm"
+                  }`}
+                />
+              ))}
+            </div>
+
+            <button
+              type="button"
+              onClick={openFilePicker}
+              onDragOver={handleDropZoneDragOver}
+              onDragLeave={handleDropZoneDragLeave}
+              onDrop={handleDropZoneDrop}
+              className={`mt-3 flex w-full items-center justify-center gap-2 rounded-xl border border-dashed py-3 text-sm transition-all ${
+                isDragOver
+                  ? "border-primary bg-accent/30 text-primary"
+                  : "border-border bg-card/50 text-muted-foreground hover:border-primary hover:text-primary"
+              }`}
+            >
+              <PlusCircleIcon />
+              {t("addMoreFiles")}
+            </button>
+          </>
+        )}
+      </WizardContainer>
     </div>
   );
 }

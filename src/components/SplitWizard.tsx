@@ -8,7 +8,6 @@ import { DismissibleBanner } from "./DismissibleBanner";
 import { WizardHeader } from "./WizardHeader";
 import { WizardContainer } from "./WizardContainer";
 import { FileCard } from "./FileCard";
-import { WizardFooter } from "./WizardFooter";
 import { PdfThumbnail } from "./PdfThumbnail";
 import { PageStack, WizardFile } from "@/lib/types";
 import { formatSize } from "@/lib/formatSize";
@@ -201,51 +200,6 @@ export function SplitWizard() {
     />
   );
 
-  /* ================================================================ */
-  /*  Empty state                                                      */
-  /* ================================================================ */
-  if (!file) {
-    return (
-      <div className="flex min-h-screen flex-col bg-background">
-        <WizardHeader />
-        {fileInput}
-
-        {rejectedFiles.length > 0 && (
-          <DismissibleBanner
-            message={t("rejectedFiles", { files: rejectedFiles.join(", ") })}
-            dismissLabel={t("dismiss")}
-            onDismiss={() => setRejectedFiles([])}
-          />
-        )}
-        {passwordProtectedFiles.length > 0 && (
-          <DismissibleBanner
-            message={t("passwordProtectedFiles", {
-              files: passwordProtectedFiles.join(", "),
-            })}
-            dismissLabel={t("dismiss")}
-            onDismiss={() => setPasswordProtectedFiles([])}
-          />
-        )}
-
-        <WizardContainer icon={<ScissorsIcon className="!h-4 !w-4" />} title={t("title")} empty>
-          <DropZone
-            title={t("dropTitle")}
-            subtitle={t("dropSubtitle")}
-            privacyNote={t("privacyNote")}
-            onClick={openFilePicker}
-            onDragOver={handleDropZoneDragOver}
-            onDragLeave={handleDropZoneDragLeave}
-            onDrop={handleDropZoneDrop}
-            isDragOver={isDragOver}
-          />
-        </WizardContainer>
-      </div>
-    );
-  }
-
-  /* ================================================================ */
-  /*  Populated state                                                  */
-  /* ================================================================ */
   return (
     <div className="flex min-h-screen flex-col bg-background">
       <WizardHeader />
@@ -268,145 +222,163 @@ export function SplitWizard() {
         />
       )}
 
-      <WizardContainer icon={<ScissorsIcon className="!h-4 !w-4" />} title={t("title")}>
-          <FileCard
-            name={file.name}
-            subtitle={`${t("pageCount", { count: file.pageCount })} \u00b7 ${formatSize(file.fileSize)}`}
-            onRemove={handleRemove}
-            removeTitle={t("remove")}
+      <WizardContainer
+        icon={<ScissorsIcon className="!h-4 !w-4" />}
+        title={t("title")}
+        empty={!file}
+        footer={file ? {
+          statusText: <><span className="font-medium text-foreground">{validRanges.length}</span>{" "}{t("rangesCount", { count: validRanges.length })}</>,
+          buttonLabel: isSplitting ? t("splitting") : t("splitAndDownload"),
+          onButtonClick: handleSplit,
+          disabled: isSplitting || validRanges.length === 0,
+        } : undefined}
+      >
+        {!file ? (
+          <DropZone
+            title={t("dropTitle")}
+            subtitle={t("dropSubtitle")}
+            privacyNote={t("privacyNote")}
+            onClick={openFilePicker}
+            onDragOver={handleDropZoneDragOver}
+            onDragLeave={handleDropZoneDragLeave}
+            onDrop={handleDropZoneDrop}
+            isDragOver={isDragOver}
           />
+        ) : (
+          <>
+            <FileCard
+              name={file.name}
+              subtitle={`${t("pageCount", { count: file.pageCount })} \u00b7 ${formatSize(file.fileSize)}`}
+              onRemove={handleRemove}
+              removeTitle={t("remove")}
+            />
 
-          {/* Range editor */}
-          <div className="mt-6">
-            <div className="mb-3 flex items-center justify-between">
-              <p className="text-xs font-medium uppercase tracking-widest text-muted-foreground">
-                {t("pageRanges")}
-              </p>
-              <button
-                type="button"
-                onClick={handleAddRange}
-                className="flex items-center gap-1 text-xs font-medium text-primary transition-colors hover:text-primary/80"
-              >
-                <PlusCircleIcon className="!h-4 !w-4" />
-                {t("addRange")}
-              </button>
-            </div>
+            {/* Range editor */}
+            <div className="mt-6">
+              <div className="mb-3 flex items-center justify-between">
+                <p className="text-xs font-medium uppercase tracking-widest text-muted-foreground">
+                  {t("pageRanges")}
+                </p>
+                <button
+                  type="button"
+                  onClick={handleAddRange}
+                  className="flex items-center gap-1 text-xs font-medium text-primary transition-colors hover:text-primary/80"
+                >
+                  <PlusCircleIcon className="!h-4 !w-4" />
+                  {t("addRange")}
+                </button>
+              </div>
 
-            <div className="space-y-2">
-              {ranges.map((range) => {
-                const valid = isRangeValid(range, file.pageCount);
-                const previewPages = valid
-                  ? file.stack.pages.slice(range.from - 1, range.to)
-                  : [];
-                return (
-                  <div
-                    key={range.id}
-                    className={`rounded-xl border bg-card ${
-                      valid
-                        ? "border-border"
-                        : "border-red-400/50 bg-red-500/5"
-                    }`}
-                  >
-                    <div className="flex items-center gap-3 p-3">
-                      <span className="text-sm text-muted-foreground">
-                        {t("pages")}
-                      </span>
-                      <input
-                        type="number"
-                        min={1}
-                        max={file.pageCount}
-                        value={range.from}
-                        onChange={(e) =>
-                          handleRangeChange(
-                            range.id,
-                            "from",
-                            parseInt(e.target.value, 10) || 1
-                          )
-                        }
-                        className="w-16 rounded-lg border border-border bg-background px-2 py-1.5 text-center text-sm text-foreground outline-none focus:border-primary"
-                      />
-                      <span className="text-sm text-muted-foreground">{t("to")}</span>
-                      <input
-                        type="number"
-                        min={1}
-                        max={file.pageCount}
-                        value={range.to}
-                        onChange={(e) =>
-                          handleRangeChange(
-                            range.id,
-                            "to",
-                            parseInt(e.target.value, 10) || 1
-                          )
-                        }
-                        className="w-16 rounded-lg border border-border bg-background px-2 py-1.5 text-center text-sm text-foreground outline-none focus:border-primary"
-                      />
-                      <span className="flex-1 text-xs text-muted-foreground">
-                        / {file.pageCount}
-                      </span>
-                      {!valid && (
-                        <span className="text-xs text-red-500">
-                          {t("invalidRange")}
+              <div className="space-y-2">
+                {ranges.map((range) => {
+                  const valid = isRangeValid(range, file.pageCount);
+                  const previewPages = valid
+                    ? file.stack.pages.slice(range.from - 1, range.to)
+                    : [];
+                  return (
+                    <div
+                      key={range.id}
+                      className={`rounded-xl border bg-card ${
+                        valid
+                          ? "border-border"
+                          : "border-red-400/50 bg-red-500/5"
+                      }`}
+                    >
+                      <div className="flex items-center gap-3 p-3">
+                        <span className="text-sm text-muted-foreground">
+                          {t("pages")}
                         </span>
-                      )}
-                      {ranges.length > 1 && (
-                        <button
-                          type="button"
-                          onClick={() => handleRemoveRange(range.id)}
-                          className="rounded-lg p-1 text-muted-foreground transition-all hover:bg-red-500/10 hover:text-red-500"
-                        >
-                          <TrashIcon />
-                        </button>
-                      )}
-                    </div>
-                    {previewPages.length > 0 && (
-                      <div className="flex items-end justify-center gap-4 border-t border-border px-3 py-4">
-                        {/* First page */}
-                        <div className="flex shrink-0 flex-col items-center gap-1">
-                          <PdfThumbnail
-                            pageRef={previewPages[0]}
-                            width={120}
-                            className="shadow-sm"
-                          />
-                          <span className="text-xs text-muted-foreground">
-                            {range.from}
-                          </span>
-                        </div>
-                        {/* Ellipsis when more than 2 pages */}
-                        {previewPages.length > 2 && (
-                          <span className="mb-3 -mr-[0.3em] text-4xl tracking-[0.3em] text-muted-foreground">
-                            &hellip;
+                        <input
+                          type="number"
+                          min={1}
+                          max={file.pageCount}
+                          value={range.from}
+                          onChange={(e) =>
+                            handleRangeChange(
+                              range.id,
+                              "from",
+                              parseInt(e.target.value, 10) || 1
+                            )
+                          }
+                          className="w-16 rounded-lg border border-border bg-background px-2 py-1.5 text-center text-sm text-foreground outline-none focus:border-primary"
+                        />
+                        <span className="text-sm text-muted-foreground">{t("to")}</span>
+                        <input
+                          type="number"
+                          min={1}
+                          max={file.pageCount}
+                          value={range.to}
+                          onChange={(e) =>
+                            handleRangeChange(
+                              range.id,
+                              "to",
+                              parseInt(e.target.value, 10) || 1
+                            )
+                          }
+                          className="w-16 rounded-lg border border-border bg-background px-2 py-1.5 text-center text-sm text-foreground outline-none focus:border-primary"
+                        />
+                        <span className="flex-1 text-xs text-muted-foreground">
+                          / {file.pageCount}
+                        </span>
+                        {!valid && (
+                          <span className="text-xs text-red-500">
+                            {t("invalidRange")}
                           </span>
                         )}
-                        {/* Last page (if different from first) */}
-                        {previewPages.length > 1 && (
+                        {ranges.length > 1 && (
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveRange(range.id)}
+                            className="rounded-lg p-1 text-muted-foreground transition-all hover:bg-red-500/10 hover:text-red-500"
+                          >
+                            <TrashIcon />
+                          </button>
+                        )}
+                      </div>
+                      {previewPages.length > 0 && (
+                        <div className="flex items-end justify-center gap-4 border-t border-border px-3 py-4">
+                          {/* First page */}
                           <div className="flex shrink-0 flex-col items-center gap-1">
                             <PdfThumbnail
-                              pageRef={previewPages[previewPages.length - 1]}
+                              pageRef={previewPages[0]}
                               width={120}
                               className="shadow-sm"
                             />
                             <span className="text-xs text-muted-foreground">
-                              {range.to}
+                              {range.from}
                             </span>
                           </div>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
+                          {/* Ellipsis when more than 2 pages */}
+                          {previewPages.length > 2 && (
+                            <span className="mb-3 -mr-[0.3em] text-4xl tracking-[0.3em] text-muted-foreground">
+                              &hellip;
+                            </span>
+                          )}
+                          {/* Last page (if different from first) */}
+                          {previewPages.length > 1 && (
+                            <div className="flex shrink-0 flex-col items-center gap-1">
+                              <PdfThumbnail
+                                pageRef={previewPages[previewPages.length - 1]}
+                                width={120}
+                                className="shadow-sm"
+                              />
+                              <span className="text-xs text-muted-foreground">
+                                {range.to}
+                              </span>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+
+              <p className="mt-3 text-xs text-muted-foreground">{t("splitInfo")}</p>
             </div>
-
-            <p className="mt-3 text-xs text-muted-foreground">{t("splitInfo")}</p>
-          </div>
+          </>
+        )}
       </WizardContainer>
-
-      <WizardFooter
-        statusText={<><span className="font-medium text-foreground">{validRanges.length}</span>{" "}{t("rangesCount", { count: validRanges.length })}</>}
-        buttonLabel={isSplitting ? t("splitting") : t("splitAndDownload")}
-        onButtonClick={handleSplit}
-        disabled={isSplitting || validRanges.length === 0}
-      />
     </div>
   );
 }
