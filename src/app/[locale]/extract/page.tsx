@@ -4,8 +4,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslations } from "next-intl";
 import { ExtractIcon, DownloadIcon } from "@/components/Icons";
 import { DropZone } from "@/components/DropZone";
-import { DismissibleBanner } from "@/components/DismissibleBanner";
-import { WizardHeader } from "@/components/WizardHeader";
+import { WizardBanners } from "@/components/WizardBanners";
+import { AppHeader } from "@/components/AppHeader";
 import { WizardContainer } from "@/components/WizardContainer";
 import { FileCard } from "@/components/FileCard";
 import { WizardFile, ExtractedImage } from "@/lib/types";
@@ -77,7 +77,7 @@ export default function ExtractPage() {
   );
 
   const { isDragOver, handleDropZoneDragOver, handleDropZoneDragLeave, handleDropZoneDrop } = useDropZone(handleFilesAdded);
-  const { fileInputRef, handleFileInput, openFilePicker } = useFileInput(handleFilesAdded);
+  const { fileInput, openFilePicker } = useFileInput(handleFilesAdded);
 
   /* ---- Cleanup on unmount ---- */
   useEffect(() => {
@@ -133,38 +133,18 @@ export default function ExtractPage() {
     };
   }, [previewUrls]);
 
-  /* ---- Hidden file input ---- */
-  const fileInput = (
-    <input
-      ref={fileInputRef}
-      type="file"
-      accept=".pdf,application/pdf"
-      className="hidden"
-      onChange={handleFileInput}
-    />
-  );
-
   return (
     <div className="flex min-h-screen flex-col bg-background">
-      <WizardHeader />
+      <AppHeader />
       {fileInput}
 
-      {rejectedFiles.length > 0 && (
-        <DismissibleBanner
-          message={t("rejectedFiles", { files: rejectedFiles.join(", ") })}
-          dismissLabel={t("dismiss")}
-          onDismiss={() => setRejectedFiles([])}
-        />
-      )}
-      {passwordProtectedFiles.length > 0 && (
-        <DismissibleBanner
-          message={t("passwordProtectedFiles", {
-            files: passwordProtectedFiles.join(", "),
-          })}
-          dismissLabel={t("dismiss")}
-          onDismiss={() => setPasswordProtectedFiles([])}
-        />
-      )}
+      <WizardBanners
+        rejectedMessage={rejectedFiles.length > 0 ? t("rejectedFiles", { files: rejectedFiles.join(", ") }) : undefined}
+        passwordProtectedMessage={passwordProtectedFiles.length > 0 ? t("passwordProtectedFiles", { files: passwordProtectedFiles.join(", ") }) : undefined}
+        dismissLabel={t("dismiss")}
+        onDismissRejected={() => setRejectedFiles([])}
+        onDismissPasswordProtected={() => setPasswordProtectedFiles([])}
+      />
 
       <WizardContainer
         icon={<ExtractIcon className="!h-4 !w-4" />}
