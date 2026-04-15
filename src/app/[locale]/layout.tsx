@@ -9,6 +9,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import "../globals.css";
 
 export const metadata: Metadata = {
+  metadataBase: new URL("https://hermitpdf.com"),
   title: "HermitPDF — Privacy-first PDF toolkit",
   description:
     "Merge, split, rotate, watermark, and compress PDFs entirely in your browser. No files are ever uploaded to a server.",

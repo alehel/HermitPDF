@@ -12,7 +12,7 @@ export async function generateMetadata({
   const t = await getTranslations({ locale, namespace: "batesWizard" });
   return {
     title: `${t("title")} — HermitPDF`,
-    description: "Add Bates numbering to PDF documents. Free, private, and runs entirely in your browser.",
+    description: t("metaDescription"),
   };
 }
 

@@ -12,7 +12,7 @@ export async function generateMetadata({
   const t = await getTranslations({ locale, namespace: "extractImagesWizard" });
   return {
     title: `${t("title")} — HermitPDF`,
-    description: "Extract all embedded images from a PDF file. Free, private, and runs entirely in your browser.",
+    description: t("metaDescription"),
   };
 }
 
