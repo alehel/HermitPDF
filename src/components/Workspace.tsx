@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { useTranslations } from "next-intl";
 import clsx from "clsx";
+import { checkerboardStyle } from "@/lib/utils";
 import { FileIcon, ImageIcon } from "./Icons";
 import { PageStack, PageRef } from "@/lib/types";
 import { PdfPage } from "./PdfPage";
@@ -166,9 +167,10 @@ export function Workspace({
         ref={scrollRef}
         onScroll={handleScroll}
         className={clsx(
-          "flex-1 overflow-y-auto bg-secondary px-10",
+          "flex-1 overflow-y-auto px-10",
           isResizing && "pointer-events-none"
         )}
+        style={checkerboardStyle}
       >
         <div
           style={{

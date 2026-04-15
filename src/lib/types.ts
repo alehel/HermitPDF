@@ -42,6 +42,24 @@ export interface ImagePosition {
   height: number;
 }
 
+export type BatesPosition =
+  | "top-left"
+  | "top-center"
+  | "top-right"
+  | "bottom-left"
+  | "bottom-center"
+  | "bottom-right";
+
+export interface BatesConfig {
+  prefix: string;
+  startNumber: number;
+  digits: number;
+  position: BatesPosition;
+  fontSize: number;
+  padding: number;
+  shrink: boolean;
+}
+
 export function formatFileSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
