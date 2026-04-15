@@ -29,26 +29,15 @@ export function WizardContainer({
   footer,
   children,
 }: WizardContainerProps) {
-  if (empty) {
-    return (
-      <main className="flex flex-1 flex-col items-center justify-center px-6 pb-16">
-        <div className={`w-full ${MAX_WIDTH}`}>
-          <WizardTitle icon={icon} title={title} badge={badge} />
-          {children}
-        </div>
-      </main>
-    );
-  }
-
   return (
     <>
-      <main className="flex flex-1 flex-col items-center px-6 py-8">
+      <main className={`flex flex-1 flex-col items-center px-6 ${empty ? "justify-center pb-16" : "py-8"}`}>
         <div className={`w-full ${MAX_WIDTH}`}>
           <WizardTitle icon={icon} title={title} badge={badge} />
           {children}
         </div>
       </main>
-      {footer && (
+      {footer && !empty && (
         <footer className="border-t border-border bg-card px-6 py-4">
           <div className={`mx-auto flex ${MAX_WIDTH} items-center justify-between`}>
             <div className="text-sm text-muted-foreground">{footer.statusText}</div>
