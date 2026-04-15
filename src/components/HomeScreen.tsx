@@ -10,6 +10,7 @@ import {
   MergeIcon,
   ScissorsIcon,
   ExtractIcon,
+  BatesIcon,
   WorkbenchIcon,
   ArrowRightIcon,
 } from "./Icons";
@@ -68,10 +69,11 @@ export function HomeScreen() {
         <p className="mb-4 text-xs font-medium uppercase tracking-widest text-muted-foreground">
           {t("quickActions")}
         </p>
-        <div className="mb-10 flex w-full max-w-2xl gap-3">
+        <div className="mb-10 grid w-full max-w-2xl grid-cols-2 gap-3 sm:grid-cols-4">
           <QuickActionCard href="/merge" icon={<MergeIcon />} title={t("merge")} description={t("mergeDesc")} />
           <QuickActionCard href="/split" icon={<ScissorsIcon />} title={t("split")} description={t("splitDesc")} />
           <QuickActionCard href="/extract" icon={<ExtractIcon />} title={t("extractImages")} description={t("extractImagesDesc")} />
+          <QuickActionCard href="/bates" icon={<BatesIcon />} title={t("bates")} description={t("batesDesc")} />
         </div>
 
         {/* Divider */}

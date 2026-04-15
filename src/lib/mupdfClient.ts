@@ -1,7 +1,7 @@
 import * as Comlink from "comlink";
 import type { MupdfWorkerApi } from "@/workers/mupdf.worker";
 import { retrieveDoc } from "./pdfStore";
-import type { PageRef, PdfMetadata, ExtractedImage, ImagePosition } from "./types";
+import type { PageRef, PdfMetadata, ExtractedImage, ImagePosition, BatesConfig } from "./types";
 
 let worker: Comlink.Remote<MupdfWorkerApi> | null = null;
 
@@ -147,6 +147,26 @@ export async function extractSingleImage(
 ): Promise<{ width: number; height: number; pngData: Uint8Array } | null> {
   const handle = await ensureLoaded(docId);
   return getWorker().extractSingleImage(handle, pageIndex, imageIndex) as Promise<{ width: number; height: number; pngData: Uint8Array } | null>;
+}
+
+/** Apply Bates numbering to all pages of a document. */
+export async function applyBatesStamp(
+  docId: string,
+  config: BatesConfig & { startNumber: number }
+): Promise<Uint8Array> {
+  const handle = await ensureLoaded(docId);
+  return getWorker().applyBatesStamp(handle, config);
+}
+
+/** Render a single page with Bates stamp for preview. */
+export async function renderBatesPreview(
+  docId: string,
+  pageIndex: number,
+  config: BatesConfig & { startNumber: number },
+  dpi: number = 144
+): Promise<ImageData> {
+  const handle = await ensureLoaded(docId);
+  return getWorker().renderBatesPreview(handle, pageIndex, config, dpi);
 }
 
 /** Merge pages into a single PDF using document handles for resource deduplication. */

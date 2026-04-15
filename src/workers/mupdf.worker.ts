@@ -2,12 +2,30 @@
 declare var $libmupdf_wasm_Module: unknown;
 
 import * as Comlink from "comlink";
+import type { BatesPosition } from "@/lib/types";
+import {
+  formatBatesNumber,
+  computeShrinkTransform,
+  computeShrinkMargin,
+  computeStampPosition,
+  getQuadding,
+} from "@/lib/batesStamp";
 
 type PdfMetadata = {
   title?: string;
   author?: string;
   subject?: string;
   keywords?: string;
+};
+
+type BatesStampWorkerConfig = {
+  prefix: string;
+  startNumber: number;
+  digits: number;
+  position: BatesPosition;
+  fontSize: number;
+  padding: number;
+  shrink: boolean;
 };
 
 // Lazy-load mupdf WASM — initialized on first use, not at module load time.
@@ -355,6 +373,247 @@ const api = {
       }
     } finally {
       page.destroy();
+    }
+  },
+
+  /**
+   * Apply Bates numbering to all pages of a document.
+   * Creates a new PDF with stamps baked into the page content.
+   *
+   * When shrink is enabled, the original content is scaled down via a
+   * content-stream transformation matrix (q/Q + cm) to make room for the stamp.
+   * The stamp is added as a FreeText annotation, then baked into the page.
+   */
+  async applyBatesStamp(
+    handle: number,
+    config: BatesStampWorkerConfig
+  ): Promise<Uint8Array> {
+    const { doc: sourceDoc, mupdf } = getDoc(handle);
+    const output = new mupdf.PDFDocument();
+    try {
+      output.setMetaData("info:Creator", "hermitpdf.eu");
+      output.setMetaData("info:Producer", "hermitpdf.eu");
+
+      const pageCount = sourceDoc.countPages();
+      for (let i = 0; i < pageCount; i++) {
+        output.graftPage(i, sourceDoc as InstanceType<typeof mupdf.PDFDocument>, i);
+      }
+
+      // Add a Helvetica font for the stamp
+      const font = new mupdf.Font("Helvetica");
+
+      for (let i = 0; i < pageCount; i++) {
+        const batesText = formatBatesNumber(config.prefix, config.startNumber + i, config.digits);
+
+        // Get page dimensions from the page object
+        const pageObj = output.findPage(i);
+        const mediaBox = pageObj.get("MediaBox");
+        const pageWidth = mediaBox.get(2).asNumber() - mediaBox.get(0).asNumber();
+        const pageHeight = mediaBox.get(3).asNumber() - mediaBox.get(1).asNumber();
+
+        // Handle shrink mode: wrap existing content stream with scale matrix
+        if (config.shrink) {
+          const transform = computeShrinkTransform(pageWidth, pageHeight, config.position, config.fontSize, config.padding);
+          const contentsObj = pageObj.get("Contents");
+
+          if (!contentsObj.isNull()) {
+            let originalStream = "";
+            try {
+              if (contentsObj.isArray()) {
+                const parts: string[] = [];
+                for (let s = 0; s < contentsObj.length; s++) {
+                  parts.push(contentsObj.get(s).readStream().asString());
+                }
+                originalStream = parts.join("\n");
+              } else {
+                originalStream = contentsObj.readStream().asString();
+              }
+            } catch {
+              // Stream data may not be directly readable on grafted pages;
+              // fall through and skip shrink for this page.
+            }
+
+            if (originalStream) {
+              const wrappedStream =
+                `q ${transform.a} ${transform.b} ${transform.c} ${transform.d} ${transform.e} ${transform.f} cm\n` +
+                originalStream +
+                "\nQ\n";
+
+              // Create a new stream object for the wrapped content
+              const newStreamObj = output.addStream(wrappedStream, {});
+              pageObj.put("Contents", newStreamObj);
+            }
+          }
+        }
+
+        // Add FreeText annotation for the Bates stamp
+        const page = output.loadPage(i) as InstanceType<typeof mupdf.PDFPage>;
+        try {
+          const annot = page.createAnnotation("FreeText");
+          const pos = computeStampPosition(pageWidth, pageHeight, config.position, config.fontSize, config.padding);
+          const quadding = getQuadding(config.position);
+
+          // Set annotation rect — width covers most of the page for alignment to work
+          const rectHeight = config.fontSize + config.padding;
+          let rectX0: number, rectX1: number;
+          if (quadding === 0) {
+            // Left-aligned
+            rectX0 = pos.x;
+            rectX1 = pageWidth - config.padding;
+          } else if (quadding === 2) {
+            // Right-aligned
+            rectX0 = config.padding;
+            rectX1 = pos.x;
+          } else {
+            // Center
+            rectX0 = config.padding;
+            rectX1 = pageWidth - config.padding;
+          }
+
+          annot.setRect([rectX0, pos.y, rectX1, pos.y + rectHeight]);
+          annot.setDefaultAppearance("Helv", config.fontSize, [0, 0, 0]);
+          annot.setContents(batesText);
+          annot.setQuadding(quadding);
+          annot.setBorderWidth(0);
+          annot.setColor([]);
+          annot.update();
+        } finally {
+          page.destroy();
+        }
+      }
+
+      // Bake annotations into page content so stamps are permanent
+      output.bake(true, false);
+      font.destroy();
+
+      const buf = output.saveToBuffer("compress");
+      const bytes = buf.asUint8Array().slice();
+      buf.destroy();
+      return Comlink.transfer(bytes, [bytes.buffer]);
+    } finally {
+      output.destroy();
+    }
+  },
+
+  /**
+   * Render a single page with Bates stamp applied, for preview purposes.
+   * Creates a temporary document, applies the stamp to one page, renders it,
+   * then discards the temporary document immediately.
+   */
+  async renderBatesPreview(
+    handle: number,
+    pageIndex: number,
+    config: BatesStampWorkerConfig,
+    dpi: number
+  ): Promise<ImageData> {
+    const { doc: sourceDoc, mupdf } = getDoc(handle);
+    const output = new mupdf.PDFDocument();
+    try {
+      // Graft just the one page
+      output.graftPage(0, sourceDoc as InstanceType<typeof mupdf.PDFDocument>, pageIndex);
+
+      const font = new mupdf.Font("Helvetica");
+      const batesText = formatBatesNumber(config.prefix, config.startNumber, config.digits);
+
+      const pageObj = output.findPage(0);
+      const mediaBox = pageObj.get("MediaBox");
+      const pageWidth = mediaBox.get(2).asNumber() - mediaBox.get(0).asNumber();
+      const pageHeight = mediaBox.get(3).asNumber() - mediaBox.get(1).asNumber();
+
+      if (config.shrink) {
+        const transform = computeShrinkTransform(pageWidth, pageHeight, config.position, config.fontSize, config.padding);
+        const contentsObj = pageObj.get("Contents");
+
+        if (!contentsObj.isNull()) {
+          let originalStream = "";
+          try {
+            if (contentsObj.isArray()) {
+              const parts: string[] = [];
+              for (let s = 0; s < contentsObj.length; s++) {
+                parts.push(contentsObj.get(s).readStream().asString());
+              }
+              originalStream = parts.join("\n");
+            } else {
+              originalStream = contentsObj.readStream().asString();
+            }
+          } catch {
+            // Stream data may not be directly readable on grafted pages;
+            // fall through and skip shrink for this page.
+          }
+
+          if (originalStream) {
+            const wrappedStream =
+              `q ${transform.a} ${transform.b} ${transform.c} ${transform.d} ${transform.e} ${transform.f} cm\n` +
+              originalStream +
+              "\nQ\n";
+
+            const newStreamObj = output.addStream(wrappedStream, {});
+            pageObj.put("Contents", newStreamObj);
+          }
+        }
+      }
+
+      const page = output.loadPage(0) as InstanceType<typeof mupdf.PDFPage>;
+      try {
+        const annot = page.createAnnotation("FreeText");
+        const pos = computeStampPosition(pageWidth, pageHeight, config.position, config.fontSize, config.padding);
+        const quadding = getQuadding(config.position);
+
+        const rectHeight = config.fontSize + config.padding;
+        let rectX0: number, rectX1: number;
+        if (quadding === 0) {
+          rectX0 = pos.x;
+          rectX1 = pageWidth - config.padding;
+        } else if (quadding === 2) {
+          rectX0 = config.padding;
+          rectX1 = pos.x;
+        } else {
+          rectX0 = config.padding;
+          rectX1 = pageWidth - config.padding;
+        }
+
+        annot.setRect([rectX0, pos.y, rectX1, pos.y + rectHeight]);
+        annot.setDefaultAppearance("Helv", config.fontSize, [0, 0, 0]);
+        annot.setContents(batesText);
+        annot.setQuadding(quadding);
+        annot.setBorderWidth(0);
+        annot.setColor([]);
+        annot.update();
+      } finally {
+        page.destroy();
+      }
+
+      output.bake(true, false);
+
+      // Render the stamped page
+      const { matrix, normalizedBbox } = buildPageMatrix(mupdf, output, 0, dpi, 0);
+      const renderPage = output.loadPage(0);
+      try {
+        const pixmap = new mupdf.Pixmap(mupdf.ColorSpace.DeviceRGB, normalizedBbox, true);
+        try {
+          pixmap.clear(255);
+          const device = new mupdf.DrawDevice(matrix, pixmap);
+          try {
+            renderPage.run(device, mupdf.Matrix.identity);
+            device.close();
+          } finally {
+            device.destroy();
+          }
+          const imageData = new ImageData(
+            pixmap.getPixels().slice(),
+            pixmap.getWidth(),
+            pixmap.getHeight()
+          );
+          return Comlink.transfer(imageData, [imageData.data.buffer]);
+        } finally {
+          pixmap.destroy();
+        }
+      } finally {
+        renderPage.destroy();
+        font.destroy();
+      }
+    } finally {
+      output.destroy();
     }
   },
 
