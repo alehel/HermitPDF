@@ -3,8 +3,7 @@
 import Image from "next/image";
 import { useTranslations } from "next-intl";
 import { Link } from "@/i18n/navigation";
-import { useTheme } from "@/components/ThemeProvider";
-import { ThemeToggle } from "@/components/ThemeToggle";
+import { AppHeader } from "@/components/AppHeader";
 import {
   MergeIcon,
   ScissorsIcon,
@@ -18,21 +17,10 @@ import { Footer } from "@/components/Footer";
 
 export default function Home() {
   const t = useTranslations("homeScreen");
-  const { theme } = useTheme();
 
   return (
     <div className="flex min-h-screen flex-col bg-background">
-      {/* Header */}
-      <header className="flex items-center justify-between px-6 py-4">
-        <Image
-          src={theme === "dark" ? "/hermitpdf-full-dark.svg" : "/hermitpdf-full.svg"}
-          alt="HermitPDF"
-          width={160}
-          height={23}
-          priority
-        />
-        <ThemeToggle title={t("toggleTheme")} />
-      </header>
+      <AppHeader showBack={false} />
 
       {/* Main content */}
       <main className="flex flex-1 flex-col items-center justify-center px-6 pb-16">

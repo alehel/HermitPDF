@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Topbar } from "@/components/Topbar";
+import { AppHeader } from "@/components/AppHeader";
 import { useTranslations } from "next-intl";
 import { DismissibleBanner } from "@/components/DismissibleBanner";
 import { StackPanel } from "@/components/StackPanel";
@@ -591,7 +591,7 @@ export default function WorkbenchPage() {
 
   return (
     <div className="flex h-full flex-col" data-workbench>
-      <Topbar />
+      <AppHeader />
       {rejectedFiles.length > 0 && (
         <DismissibleBanner
           message={t("rejectedFiles", { files: rejectedFiles.join(", ") })}
