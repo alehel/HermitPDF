@@ -41,6 +41,7 @@ export default async function LocaleLayout({
             __html: `try{var t=localStorage.getItem("pw-theme");if(t==="dark"||(!t&&window.matchMedia("(prefers-color-scheme:dark)").matches))document.documentElement.classList.add("dark")}catch(e){}`,
           }}
         />
+        <script defer data-domain="hermitpdf.com" src="https://plausible.io/js/script.js" />
       </head>
       <body
         className="h-full antialiased"
