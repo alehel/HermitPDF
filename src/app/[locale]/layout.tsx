@@ -41,7 +41,11 @@ export default async function LocaleLayout({
             __html: `try{var t=localStorage.getItem("pw-theme");if(t==="dark"||(!t&&window.matchMedia("(prefers-color-scheme:dark)").matches))document.documentElement.classList.add("dark")}catch(e){}`,
           }}
         />
-        <script defer data-domain="hermitpdf.com" src="https://plausible.io/js/script.js" />
+        {/* Plausible analytics — only included when NEXT_PUBLIC_PLAUSIBLE_DOMAIN is set.
+            Omitted from self-hosted Docker builds so they ship analytics-free. */}
+        {process.env.NEXT_PUBLIC_PLAUSIBLE_DOMAIN && (
+          <script defer data-domain={process.env.NEXT_PUBLIC_PLAUSIBLE_DOMAIN} src="https://plausible.io/js/script.js" />
+        )}
       </head>
       <body
         className="h-full antialiased"
