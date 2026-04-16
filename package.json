@@ -10,6 +10,9 @@
     "lint": "eslint",
     "postinstall": "cp node_modules/mupdf/dist/mupdf-wasm.wasm public/mupdf-wasm.wasm"
   },
+  "engines": {
+    "node": ">=24"
+  },
   "dependencies": {
     "@base-ui/react": "^1.4.0",
     "@tanstack/react-virtual": "^3.13.23",
