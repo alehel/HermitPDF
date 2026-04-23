@@ -7,12 +7,15 @@ import { StackPanel } from "@/components/StackPanel";
 import { Workspace } from "@/components/Workspace";
 import { ResizeDivider } from "@/components/ResizeDivider";
 import { TabBar } from "@/components/TabBar";
+import { PanelHeader } from "@/components/PanelHeader";
+import { ExportModal } from "@/components/ExportModal";
 import { PageStack } from "@/lib/types";
 import { releaseDoc } from "@/lib/pdfStore";
 import { releaseDocument } from "@/lib/mupdfClient";
 import { ingestDocument } from "@/lib/pdfIngest";
 import { clearThumbnail } from "@/lib/thumbnailCache";
 import { normalizeRotation } from "@/lib/rotationUtils";
+import { exportMergedPdf, downloadPdf } from "@/lib/pdfExport";
 import {
   reorderPageInStack,
   extractPageFromStack,
@@ -104,6 +107,8 @@ export function WorkbenchClient() {
   const [scrollToPageId, setScrollToPageId] = useState<string | null>(null);
   const [thumbnailVersions, setThumbnailVersions] = useState<Map<string, number>>(new Map());
   const [activeTab, setActiveTab] = useState<"documents" | "preview">("documents");
+  const [showExportModal, setShowExportModal] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Warn before navigating away when documents are loaded
   const hasStacks = stacks.length > 0;
@@ -351,9 +356,8 @@ export function WorkbenchClient() {
       setSelectedPageIds(new Set([pageId]));
       setAnchorPageId(pageId);
       setScrollToPageId(pageId);
-      if (isNarrow) setActiveTab("preview");
     }
-  }, [isNarrow, anchorPageId, flatPageIds]);
+  }, [anchorPageId, flatPageIds]);
 
   const handleStackClick = useCallback((stackId: string, e: React.MouseEvent) => {
     const stack = stacksRef.current.find((s) => s.id === stackId);
@@ -392,9 +396,8 @@ export function WorkbenchClient() {
       setSelectedPageIds(new Set(stackPageIds));
       setAnchorPageId(stackPageIds[0]);
       setScrollToPageId(stackPageIds[0]);
-      if (isNarrow) setActiveTab("preview");
     }
-  }, [isNarrow, anchorPageId]);
+  }, [anchorPageId]);
 
   const handleDeselect = useCallback(() => {
     setSelectedPageIds(new Set());
@@ -538,13 +541,40 @@ export function WorkbenchClient() {
     commit({ stacks: nextStacks, expandedStackIds: nextExpanded });
   }, [commit]);
 
-  // --- Shared StackPanel props (avoids duplicating ~25 props for narrow vs. wide) ---
+  // --- File input + export handlers (toolbar-adjacent) ---
+
+  const handleBrowse = useCallback(() => {
+    fileInputRef.current?.click();
+  }, []);
+
+  const handleInputChange = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      if (e.target.files && e.target.files.length > 0) {
+        handleFilesAdded(e.target.files);
+        e.target.value = "";
+      }
+    },
+    [handleFilesAdded]
+  );
+
+  const handleExportSelection = useCallback(async () => {
+    if (selectedPageIds.size === 0) return;
+    const filtered = stacks
+      .map((s) => ({ ...s, pages: s.pages.filter((p) => selectedPageIds.has(p.id)) }))
+      .filter((s) => s.pages.length > 0);
+    if (filtered.length === 0) return;
+    const bytes = await exportMergedPdf(filtered);
+    const name = filtered.length === 1 ? filtered[0].name : "selection.pdf";
+    downloadPdf(bytes, name);
+  }, [stacks, selectedPageIds]);
+
+  // --- Shared StackPanel props (avoids duplicating props between narrow vs. wide) ---
 
   const sharedStackPanelProps = useMemo(() => ({
     stacks,
     onFilesAdded: handleFilesAdded,
+    onBrowseFiles: handleBrowse,
     onRemoveStack: handleRemoveStack,
-    onClearAll: handleClearAll,
     onReorderStack: handleReorderStack,
     onContextMenu: handleContextMenu,
     onPageContextMenu: handlePageContextMenu,
@@ -561,31 +591,20 @@ export function WorkbenchClient() {
     selectedPageIds,
     onPageClick: handlePageClick,
     onStackClick: handleStackClick,
-    onRotateLeft: () => handleRotate(-90),
-    onRotateRight: () => handleRotate(90),
-    rotateDisabled: !hasSelection,
     thumbnailVersions,
-    onExtractAllImages: handleExtractAllImages,
-    onExtractSelectedPages: handleExtractSelectedPages,
     onExtractPageImages: handleExtractPageImages,
     onExtractStackImages: handleExtractStackImages,
-    extractAllDisabled: stacks.length === 0,
-    extractPageDisabled: !hasSelection,
-    isExtracting,
-    onRemoveSelected: handleRemoveSelected,
-    removeSelectedDisabled: !hasSelection,
     onDeselect: handleDeselect,
   }), [
-    stacks, handleFilesAdded, handleRemoveStack, handleClearAll,
+    stacks, handleFilesAdded, handleBrowse, handleRemoveStack,
     handleReorderStack, handleContextMenu, handlePageContextMenu,
     handleSplitStack, contextMenu, viewMode, expandedStackIds,
     handleToggleExpand, handleReorderPage, handleExtractPageToList,
     handleInsertStackIntoExpanded, handleMovePageBetweenStacks,
     selectedPageIds, handlePageClick, handleStackClick,
-    handleRotate, thumbnailVersions,
-    handleExtractAllImages, handleExtractSelectedPages,
-    handleExtractPageImages, handleExtractStackImages, isExtracting,
-    handleRemoveSelected, handleDeselect, hasSelection,
+    thumbnailVersions,
+    handleExtractPageImages, handleExtractStackImages,
+    handleDeselect,
   ]);
 
   return (
@@ -611,6 +630,40 @@ export function WorkbenchClient() {
           onDismiss={clearNoImagesFound}
         />
       )}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept=".pdf,application/pdf"
+        multiple
+        className="hidden"
+        onChange={handleInputChange}
+        aria-label={t("addFiles")}
+      />
+      <PanelHeader
+        onAddFiles={handleBrowse}
+        onClearAll={handleClearAll}
+        clearAllDisabled={stacks.length === 0}
+        previewVisible={previewVisible}
+        onTogglePreview={!isNarrow ? togglePreview : undefined}
+        onRotateLeft={() => handleRotate(-90)}
+        onRotateRight={() => handleRotate(90)}
+        rotateDisabled={!hasSelection}
+        onUndo={handleUndo}
+        onRedo={handleRedo}
+        canUndo={canUndo}
+        canRedo={canRedo}
+        onExtractAllImages={handleExtractAllImages}
+        onExtractFocusedPage={handleExtractSelectedPages}
+        extractAllDisabled={stacks.length === 0}
+        extractPageDisabled={!hasSelection}
+        isExtracting={isExtracting}
+        onRemoveSelected={handleRemoveSelected}
+        removeSelectedDisabled={!hasSelection}
+        onExportAll={() => setShowExportModal(true)}
+        onExportSelection={handleExportSelection}
+        exportAllDisabled={stacks.length === 0}
+        exportSelectionDisabled={selectedPageIds.size === 0}
+      />
       {isNarrow && (
         <TabBar activeTab={activeTab} onTabChange={setActiveTab} />
       )}
@@ -620,10 +673,6 @@ export function WorkbenchClient() {
             <StackPanel
               {...sharedStackPanelProps}
               style={{ flex: 1 }}
-              onUndo={handleUndo}
-              onRedo={handleRedo}
-              canUndo={canUndo}
-              canRedo={canRedo}
             />
           ) : (
             <Workspace
@@ -639,11 +688,6 @@ export function WorkbenchClient() {
               {...sharedStackPanelProps}
               style={{ flex: 1, minWidth: 0 }}
               previewVisible={previewVisible}
-              onTogglePreview={togglePreview}
-              onUndo={handleUndo}
-              onRedo={handleRedo}
-              canUndo={canUndo}
-              canRedo={canRedo}
             />
             {previewVisible && (
               <>
@@ -661,6 +705,12 @@ export function WorkbenchClient() {
           </>
         )}
       </div>
+      {showExportModal && (
+        <ExportModal
+          stacks={stacks}
+          onClose={() => setShowExportModal(false)}
+        />
+      )}
     </>
   );
 }

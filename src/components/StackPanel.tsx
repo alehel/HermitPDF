@@ -6,22 +6,19 @@ import { PageStack } from "@/lib/types";
 import { StackCard } from "./StackCard";
 import { PageExpansionBox } from "./PageExpansionBox";
 import { ContextMenu, ContextMenuItem } from "./ContextMenu";
-import { UploadIcon, SplitIcon, DownloadIcon, ImageIcon } from "./Icons";
+import { SplitIcon, DownloadIcon, ImageIcon } from "./Icons";
 import { DropZone } from "./DropZone";
-import { Button } from "@/components/ui/button";
-import { ExportModal } from "./ExportModal";
-import { PanelHeader } from "./PanelHeader";
 import { DropIndicator, DropIndicatorVertical } from "./DropIndicators";
 import { StackDragOverlay } from "./StackDragOverlay";
 import { exportMergedPdf, downloadPdf } from "@/lib/pdfExport";
-import { Fragment, useCallback, useRef, useState } from "react";
+import { Fragment, useCallback, useRef } from "react";
 import { usePanelDragDrop } from "@/hooks/usePanelDragDrop";
 
 interface StackPanelProps {
   stacks: PageStack[];
   onFilesAdded: (files: FileList, insertAtIndex?: number) => Promise<void>;
+  onBrowseFiles: () => void;
   onRemoveStack: (id: string) => void;
-  onClearAll: () => void;
   onReorderStack: (fromIndex: number, toIndex: number) => void;
   onContextMenu: (e: React.MouseEvent, stackId: string) => void;
   onPageContextMenu: (e: React.MouseEvent, stackId: string, pageIndex: number) => void;
@@ -31,7 +28,6 @@ interface StackPanelProps {
   style?: React.CSSProperties;
   viewMode: "list" | "grid";
   previewVisible?: boolean;
-  onTogglePreview?: () => void;
   expandedStackIds?: Set<string>;
   onToggleExpand?: (stackId: string) => void;
   onReorderPage?: (stackId: string, fromPageIndex: number, toPageIndex: number) => void;
@@ -41,23 +37,9 @@ interface StackPanelProps {
   selectedPageIds: Set<string>;
   onPageClick: (pageId: string, e: React.MouseEvent) => void;
   onStackClick: (stackId: string, e: React.MouseEvent) => void;
-  onRotateLeft?: () => void;
-  onRotateRight?: () => void;
-  rotateDisabled?: boolean;
-  onUndo?: () => void;
-  onRedo?: () => void;
-  canUndo?: boolean;
-  canRedo?: boolean;
   thumbnailVersions?: Map<string, number>;
-  onExtractAllImages?: () => void;
-  onExtractSelectedPages?: () => void;
   onExtractPageImages?: (stackId: string, pageIndex: number) => void;
   onExtractStackImages?: (stackId: string) => void;
-  extractAllDisabled?: boolean;
-  extractPageDisabled?: boolean;
-  isExtracting?: boolean;
-  onRemoveSelected?: () => void;
-  removeSelectedDisabled?: boolean;
   onDeselect?: () => void;
 }
 
@@ -137,8 +119,8 @@ function buildPageContextMenuItems(
 export function StackPanel({
   stacks,
   onFilesAdded,
+  onBrowseFiles,
   onRemoveStack,
-  onClearAll,
   onReorderStack,
   onContextMenu,
   onPageContextMenu,
@@ -148,7 +130,6 @@ export function StackPanel({
   style,
   viewMode,
   previewVisible,
-  onTogglePreview,
   expandedStackIds,
   onToggleExpand,
   onReorderPage,
@@ -158,42 +139,15 @@ export function StackPanel({
   selectedPageIds,
   onPageClick,
   onStackClick,
-  onRotateLeft,
-  onRotateRight,
-  rotateDisabled,
-  onUndo,
-  onRedo,
-  canUndo,
-  canRedo,
   thumbnailVersions,
-  onExtractAllImages,
-  onExtractSelectedPages,
   onExtractPageImages,
   onExtractStackImages,
-  extractAllDisabled,
-  extractPageDisabled,
-  isExtracting,
-  onRemoveSelected,
-  removeSelectedDisabled,
   onDeselect,
 }: StackPanelProps) {
   const tItem = useTranslations("documentItem");
   const t = useTranslations("documentPanel");
   const listRef = useRef<HTMLDivElement>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
   const gridCardRefs = useRef<Map<string, HTMLDivElement>>(new Map());
-  const [showExportModal, setShowExportModal] = useState(false);
-
-  const handleExportSelection = useCallback(async () => {
-    if (selectedPageIds.size === 0) return;
-    const filtered = stacks
-      .map((s) => ({ ...s, pages: s.pages.filter((p) => selectedPageIds.has(p.id)) }))
-      .filter((s) => s.pages.length > 0);
-    if (filtered.length === 0) return;
-    const bytes = await exportMergedPdf(filtered);
-    const name = filtered.length === 1 ? filtered[0].name : "selection.pdf";
-    downloadPdf(bytes, name);
-  }, [stacks, selectedPageIds]);
 
   const {
     dropIndex,
@@ -225,34 +179,8 @@ export function StackPanel({
     }
   }, [onDeselect]);
 
-  const handleBrowse = useCallback(() => {
-    fileInputRef.current?.click();
-  }, []);
-
-  const handleInputChange = useCallback(
-    (e: React.ChangeEvent<HTMLInputElement>) => {
-      if (e.target.files && e.target.files.length > 0) {
-        onFilesAdded(e.target.files);
-        e.target.value = "";
-      }
-    },
-    [onFilesAdded]
-  );
-
   return (
     <aside suppressHydrationWarning style={style} className={clsx("flex min-w-0 flex-col bg-background", previewVisible !== false && "border-r border-border")}>
-      <input
-        ref={fileInputRef}
-        type="file"
-        accept=".pdf,application/pdf"
-        multiple
-        className="hidden"
-        onChange={handleInputChange}
-        aria-label={t("addFiles")}
-      />
-
-      <PanelHeader onAddFiles={handleBrowse} onClearAll={onClearAll} clearAllDisabled={stacks.length === 0} previewVisible={previewVisible} onTogglePreview={onTogglePreview} onRotateLeft={onRotateLeft} onRotateRight={onRotateRight} rotateDisabled={rotateDisabled} onUndo={onUndo} onRedo={onRedo} canUndo={canUndo} canRedo={canRedo} onExtractAllImages={onExtractAllImages} onExtractFocusedPage={onExtractSelectedPages} extractAllDisabled={extractAllDisabled} extractPageDisabled={extractPageDisabled} isExtracting={isExtracting} onRemoveSelected={onRemoveSelected} removeSelectedDisabled={removeSelectedDisabled} onExportAll={() => setShowExportModal(true)} onExportSelection={handleExportSelection} exportAllDisabled={stacks.length === 0} exportSelectionDisabled={selectedPageIds.size === 0} />
-
       <div
         ref={listRef}
         className={clsx(
@@ -269,7 +197,7 @@ export function StackPanel({
             title={t("dropTitle")}
             subtitle={t("dropSubtitle")}
             privacyNote={t("privacyNote")}
-            onClick={handleBrowse}
+            onClick={onBrowseFiles}
             fill
           />
         ) : viewMode === "list" ? (
@@ -376,13 +304,6 @@ export function StackPanel({
           overlayElRef={overlayElRef}
           layout={viewMode}
           initialPos={overlayOriginPos}
-        />
-      )}
-
-      {showExportModal && (
-        <ExportModal
-          stacks={stacks}
-          onClose={() => setShowExportModal(false)}
         />
       )}
 
