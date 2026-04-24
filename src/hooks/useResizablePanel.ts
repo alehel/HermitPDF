@@ -66,9 +66,14 @@ export function useResizablePanel(containerRef: React.RefObject<HTMLDivElement |
     });
   }, []);
 
-  const handleMouseDown = useCallback(
-    (e: React.MouseEvent) => {
+  const handlePointerDown = useCallback(
+    (e: React.PointerEvent) => {
+      // Only primary button for mouse; always accept for touch/pen
+      if (e.pointerType === "mouse" && e.button !== 0) return;
       e.preventDefault();
+      const target = e.currentTarget as HTMLElement;
+      target.setPointerCapture(e.pointerId);
+
       const startX = e.clientX;
       const startWidth = previewWidth;
       setIsResizing(true);
@@ -76,7 +81,7 @@ export function useResizablePanel(containerRef: React.RefObject<HTMLDivElement |
       document.body.style.cursor = "col-resize";
       document.body.style.userSelect = "none";
 
-      function onMouseMove(ev: MouseEvent) {
+      function onPointerMove(ev: PointerEvent) {
         const container = containerRef.current;
         if (!container) return;
         const cw = container.getBoundingClientRect().width;
@@ -86,29 +91,31 @@ export function useResizablePanel(containerRef: React.RefObject<HTMLDivElement |
         setPreviewWidth(newWidth);
       }
 
-      function onMouseUp() {
-        document.removeEventListener("mousemove", onMouseMove);
-        document.removeEventListener("mouseup", onMouseUp);
+      function onPointerUp() {
+        target.removeEventListener("pointermove", onPointerMove);
+        target.removeEventListener("pointerup", onPointerUp);
+        target.removeEventListener("pointercancel", onPointerUp);
         document.body.style.cursor = "";
         document.body.style.userSelect = "";
         setIsResizing(false);
         // Read the final width via setState updater to avoid a stale closure
-        // over the value from dragstart — the width changes on every mousemove.
+        // over the value from dragstart — the width changes on every pointermove.
         setPreviewWidth((currentWidth) => {
           localStorage.setItem(STORAGE_KEY, String(currentWidth));
           return currentWidth;
         });
       }
 
-      document.addEventListener("mousemove", onMouseMove);
-      document.addEventListener("mouseup", onMouseUp);
+      target.addEventListener("pointermove", onPointerMove);
+      target.addEventListener("pointerup", onPointerUp);
+      target.addEventListener("pointercancel", onPointerUp);
     },
     [previewWidth, containerRef]
   );
 
   return {
     previewWidth,
-    handleMouseDown,
+    handlePointerDown,
     isResizing,
     previewVisible,
     togglePreview,

@@ -2,31 +2,17 @@
 
 import { memo, useLayoutEffect, useRef, useState } from "react";
 import clsx from "clsx";
+import {
+  SortableContext,
+  rectSortingStrategy,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
 import { PageListItem } from "./PageListItem";
-import { DropIndicator, DropIndicatorVertical } from "./DropIndicators";
-import { DragOverlay } from "./DragOverlay";
-import { usePageBoxDragDrop } from "@/hooks/usePageBoxDragDrop";
 import { PageRef } from "@/lib/types";
 
 interface PageExpansionBoxProps {
   stackId: string;
   pages: PageRef[];
-  onReorderPage: (
-    stackId: string,
-    fromPageIndex: number,
-    toPageIndex: number
-  ) => void;
-  onInsertStackIntoExpanded: (
-    targetStackId: string,
-    sourceStackIndex: number,
-    insertAtPageIndex: number
-  ) => void;
-  onMovePageBetweenStacks: (
-    sourceStackId: string,
-    sourcePageIndex: number,
-    targetStackId: string,
-    insertAtPageIndex: number
-  ) => void;
   onPageContextMenu?: (e: React.MouseEvent, stackId: string, pageIndex: number) => void;
   variant?: "list" | "grid";
   parentCardElement?: HTMLElement | null;
@@ -38,9 +24,6 @@ interface PageExpansionBoxProps {
 export const PageExpansionBox = memo(function PageExpansionBox({
   stackId,
   pages,
-  onReorderPage,
-  onInsertStackIntoExpanded,
-  onMovePageBetweenStacks,
   onPageContextMenu,
   variant = "list",
   parentCardElement,
@@ -58,29 +41,8 @@ export const PageExpansionBox = memo(function PageExpansionBox({
     setNotchLeft(cardRect.left + cardRect.width / 2 - boxRect.left);
   }, [variant, parentCardElement, stackId]);
 
-  const {
-    pageDropIndex,
-    pageDragIndex,
-    isSameContainerDrag,
-    handlePageDragOver,
-    handlePageDragLeave,
-    handlePageDrop,
-    handlePageItemDragStart,
-    handlePageItemDragEnd,
-    getItemStyle,
-    overlayElRef,
-    overlayOriginPos,
-  } = usePageBoxDragDrop({
-    stackId,
-    pageCount: pages.length,
-    boxRef,
-    onReorderPage,
-    onInsertStackIntoExpanded,
-    onMovePageBetweenStacks,
-    layout: variant,
-  });
-
   const isGrid = variant === "grid";
+  const pageIds = pages.map((p) => p.id);
 
   return (
     <div className="relative mb-2 mt-1">
@@ -98,75 +60,49 @@ export const PageExpansionBox = memo(function PageExpansionBox({
       <div
         ref={boxRef}
         data-expansion-box
+        data-stack-id={stackId}
         className={clsx(
           "rounded-lg border border-border bg-card p-2 transition-colors",
-          pageDropIndex !== null && !isSameContainerDrag && "bg-accent/40"
         )}
-        onDragOver={handlePageDragOver}
-        onDragLeave={handlePageDragLeave}
-        onDrop={handlePageDrop}
       >
-        {isGrid ? (
-          <div className="grid grid-cols-[repeat(auto-fill,minmax(90px,1fr))] gap-1">
-            {pages.map((pageRef, i) => (
-              <div key={pageRef.id} className="relative">
-                {!isSameContainerDrag && pageDropIndex === i && <DropIndicatorVertical />}
+        <SortableContext
+          items={pageIds}
+          strategy={isGrid ? rectSortingStrategy : verticalListSortingStrategy}
+        >
+          {isGrid ? (
+            <div className="grid grid-cols-[repeat(auto-fill,minmax(90px,1fr))] gap-1">
+              {pages.map((pageRef, i) => (
                 <PageListItem
+                  key={pageRef.id}
                   pageRef={pageRef}
                   stackId={stackId}
                   pageIndex={i}
-                  onDragStart={handlePageItemDragStart}
-                  onDragEnd={handlePageItemDragEnd}
-                  isDragging={pageDragIndex === i}
                   onContextMenu={onPageContextMenu}
                   layout="tile"
-                  style={getItemStyle(i)}
                   isFocused={selectedPageIds.has(pageRef.id)}
                   onClick={onPageClick}
                   version={thumbnailVersions?.get(pageRef.id)}
                 />
-              </div>
-            ))}
-            {!isSameContainerDrag && pageDropIndex === pages.length && pages.length > 0 && (
-              <div className="relative">
-                <DropIndicatorVertical />
-              </div>
-            )}
-          </div>
-        ) : (
-          <>
-            {pages.map((pageRef, i) => (
-              <div key={pageRef.id}>
-                {!isSameContainerDrag && pageDropIndex === i && <DropIndicator />}
+              ))}
+            </div>
+          ) : (
+            <>
+              {pages.map((pageRef, i) => (
                 <PageListItem
+                  key={pageRef.id}
                   pageRef={pageRef}
                   stackId={stackId}
                   pageIndex={i}
-                  onDragStart={handlePageItemDragStart}
-                  onDragEnd={handlePageItemDragEnd}
-                  isDragging={pageDragIndex === i}
                   onContextMenu={onPageContextMenu}
-                  style={getItemStyle(i)}
                   isFocused={selectedPageIds.has(pageRef.id)}
                   onClick={onPageClick}
                   version={thumbnailVersions?.get(pageRef.id)}
                 />
-              </div>
-            ))}
-            {!isSameContainerDrag && pageDropIndex === pages.length && <DropIndicator />}
-          </>
-        )}
+              ))}
+            </>
+          )}
+        </SortableContext>
       </div>
-
-      {pageDragIndex !== null && (
-        <DragOverlay
-          pageRef={pages[pageDragIndex]}
-          pageIndex={pageDragIndex}
-          overlayElRef={overlayElRef}
-          layout={isGrid ? "tile" : "row"}
-          initialPos={overlayOriginPos}
-        />
-      )}
     </div>
   );
 });
