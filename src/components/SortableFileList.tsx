@@ -1,10 +1,28 @@
 "use client";
 
-import { useCallback, useRef } from "react";
+import { useCallback, useState } from "react";
+import {
+  DndContext,
+  DragOverlay,
+  MouseSensor,
+  TouchSensor,
+  KeyboardSensor,
+  useSensor,
+  useSensors,
+  closestCenter,
+  type DragStartEvent,
+  type DragEndEvent,
+} from "@dnd-kit/core";
+import {
+  SortableContext,
+  useSortable,
+  sortableKeyboardCoordinates,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 import { PlusCircleIcon } from "@/components/Icons";
 import { FileCard } from "@/components/FileCard";
 import type { WizardFile } from "@/lib/types";
-import { useSortableDrag } from "@/hooks/useSortableDrag";
 
 interface SortableFileListProps {
   files: WizardFile[];
@@ -26,55 +44,105 @@ interface SortableFileListProps {
   };
 }
 
+interface SortableFileCardProps {
+  file: WizardFile;
+  index: number;
+  formatSubtitle: (file: WizardFile) => string;
+  onRemove: (id: string) => void;
+  removeTitle?: string;
+}
+
+function SortableFileCard({
+  file,
+  index,
+  formatSubtitle,
+  onRemove,
+  removeTitle,
+}: SortableFileCardProps) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: file.id });
+
+  const style: React.CSSProperties = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0 : undefined,
+    touchAction: "manipulation",
+  };
+
+  return (
+    <FileCard
+      ref={setNodeRef}
+      name={file.name}
+      subtitle={formatSubtitle(file)}
+      onRemove={() => onRemove(file.id)}
+      removeTitle={removeTitle}
+      showDragHandle
+      extraProps={{ ...attributes, ...listeners }}
+      orderBadge={
+        <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-accent text-xs font-medium text-primary">
+          {index + 1}
+        </span>
+      }
+      style={style}
+      className="group flex touch-none select-none items-center gap-3 rounded-xl border border-border bg-card p-4 transition-shadow hover:border-primary/40 hover:shadow-sm"
+    />
+  );
+}
+
 export function SortableFileList({
   files,
-  dragKey,
   onRemove,
   onReorder,
-  onFilesAdded,
   openFilePicker,
   isDragOver,
   dropZoneHandlers,
   formatSubtitle,
   labels,
 }: SortableFileListProps) {
-  const listRef = useRef<HTMLDivElement | null>(null);
+  const [activeId, setActiveId] = useState<string | null>(null);
 
-  const dragDataType = `text/x-${dragKey}-index`;
-  const dataAttr = `data-${dragKey}-item`;
-
-  const handleReorderDrop = useCallback(
-    (e: React.DragEvent, toIndex: number) => {
-      const fromStr = e.dataTransfer.getData(dragDataType);
-      if (fromStr) {
-        onReorder(parseInt(fromStr, 10), toIndex);
-      } else if (e.dataTransfer.files.length > 0) {
-        onFilesAdded(e.dataTransfer.files);
-      }
-    },
-    [dragDataType, onReorder, onFilesAdded]
+  const sensors = useSensors(
+    useSensor(MouseSensor, {
+      activationConstraint: { distance: 5 },
+    }),
+    useSensor(TouchSensor, {
+      activationConstraint: { delay: 180, tolerance: 8 },
+    }),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    })
   );
 
-  const {
-    dragIndex,
-    handleDragOver: sortableDragOver,
-    handleDragLeave,
-    handleDrop: sortableDrop,
-    handleItemDragStart,
-    handleItemDragEnd,
-    getItemStyle,
-  } = useSortableDrag({
-    itemCount: files.length,
-    containerRef: listRef,
-    itemSelector: `[${dataAttr}]`,
-    layout: "list",
-    acceptDrag: (e) =>
-      e.dataTransfer.types.includes(dragDataType) ||
-      e.dataTransfer.types.includes("Files"),
-    getDropEffect: (e) =>
-      e.dataTransfer.types.includes("Files") ? "copy" : "move",
-    onDrop: handleReorderDrop,
-  });
+  const handleDragStart = useCallback((e: DragStartEvent) => {
+    setActiveId(String(e.active.id));
+  }, []);
+
+  const handleDragEnd = useCallback(
+    (e: DragEndEvent) => {
+      setActiveId(null);
+      const { active, over } = e;
+      if (!over || active.id === over.id) return;
+      const fromIndex = files.findIndex((f) => f.id === active.id);
+      const toIndex = files.findIndex((f) => f.id === over.id);
+      if (fromIndex === -1 || toIndex === -1) return;
+      // onReorder expects a splice-style toIndex where the dragged item was already removed.
+      // dnd-kit gives us the index in the current array — arrayMove semantics match splice
+      // after removal, so we can pass toIndex directly.
+      onReorder(fromIndex, toIndex);
+    },
+    [files, onReorder]
+  );
+
+  const handleDragCancel = useCallback(() => setActiveId(null), []);
+
+  const activeFile = activeId ? files.find((f) => f.id === activeId) : null;
+  const activeIndex = activeId ? files.findIndex((f) => f.id === activeId) : -1;
 
   return (
     <>
@@ -82,41 +150,52 @@ export function SortableFileList({
         {labels.dragToReorder}
       </p>
 
-      <div
-        ref={listRef}
-        className="space-y-2"
-        onDragOver={sortableDragOver}
-        onDragLeave={handleDragLeave}
-        onDrop={sortableDrop}
+      <DndContext
+        sensors={sensors}
+        collisionDetection={closestCenter}
+        onDragStart={handleDragStart}
+        onDragEnd={handleDragEnd}
+        onDragCancel={handleDragCancel}
       >
-        {files.map((file, i) => (
-          <FileCard
-            key={file.id}
-            name={file.name}
-            subtitle={formatSubtitle(file)}
-            onRemove={() => onRemove(file.id)}
-            extraProps={{ [dataAttr]: true } as React.HTMLAttributes<HTMLDivElement>}
-            dragHandle={{
-              onDragStart: (e) => {
-                e.dataTransfer.setData(dragDataType, String(i));
-                handleItemDragStart(i, e);
-              },
-              onDragEnd: handleItemDragEnd,
-            }}
-            orderBadge={
-              <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-accent text-xs font-medium text-primary">
-                {i + 1}
-              </span>
-            }
-            style={getItemStyle(i)}
-            className={`group flex items-center gap-3 rounded-xl border bg-card p-4 transition-all ${
-              dragIndex === i
-                ? "border-primary opacity-0"
-                : "border-border hover:border-primary/40 hover:shadow-sm"
-            }`}
-          />
-        ))}
-      </div>
+        <div
+          className="space-y-2"
+          onDragOver={dropZoneHandlers.onDragOver}
+          onDragLeave={dropZoneHandlers.onDragLeave}
+          onDrop={dropZoneHandlers.onDrop}
+        >
+          <SortableContext
+            items={files.map((f) => f.id)}
+            strategy={verticalListSortingStrategy}
+          >
+            {files.map((file, i) => (
+              <SortableFileCard
+                key={file.id}
+                file={file}
+                index={i}
+                formatSubtitle={formatSubtitle}
+                onRemove={onRemove}
+              />
+            ))}
+          </SortableContext>
+        </div>
+
+        <DragOverlay>
+          {activeFile ? (
+            <FileCard
+              name={activeFile.name}
+              subtitle={formatSubtitle(activeFile)}
+              onRemove={() => {}}
+              showDragHandle
+              orderBadge={
+                <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-accent text-xs font-medium text-primary">
+                  {activeIndex + 1}
+                </span>
+              }
+              className="group flex scale-[1.02] items-center gap-3 rounded-xl border border-primary/40 bg-card p-4 shadow-xl"
+            />
+          ) : null}
+        </DragOverlay>
+      </DndContext>
 
       <button
         type="button"

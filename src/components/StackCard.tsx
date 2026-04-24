@@ -3,6 +3,8 @@
 import { memo } from "react";
 import clsx from "clsx";
 import { useTranslations } from "next-intl";
+import { useSortable } from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 import { PageStack, formatFileSize } from "@/lib/types";
 import { CloseIcon, EyeIcon, EyeOffIcon } from "./Icons";
 import { PdfThumbnail } from "./PdfThumbnail";
@@ -42,9 +44,6 @@ interface StackCardProps {
   index: number;
   layout: "list" | "grid";
   onRemove: (id: string) => void;
-  onDragStart: (index: number, e: React.DragEvent) => void;
-  onDragEnd: () => void;
-  isDragging: boolean;
   onContextMenu: (e: React.MouseEvent, stackId: string) => void;
   isExpanded?: boolean;
   onToggleExpand?: (id: string) => void;
@@ -57,9 +56,6 @@ export const StackCard = memo(function StackCard({
   index,
   layout,
   onRemove,
-  onDragStart,
-  onDragEnd,
-  isDragging,
   onContextMenu,
   isExpanded,
   onToggleExpand,
@@ -69,14 +65,23 @@ export const StackCard = memo(function StackCard({
   const t = useTranslations("documentItem");
   const isStack = stack.pages.length > 1;
 
-  const dragProps = {
-    draggable: true,
-    onDragStart: (e: React.DragEvent) => {
-      e.dataTransfer.effectAllowed = "move";
-      e.dataTransfer.setData("text/x-stack-index", String(index));
-      onDragStart(index, e);
-    },
-    onDragEnd,
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({
+    id: stack.id,
+    data: { type: "stack", stackId: stack.id, index },
+  });
+
+  const dragStyle: React.CSSProperties = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0 : undefined,
+    touchAction: "none",
   };
 
   const contextMenuHandler = (e: React.MouseEvent) => {
@@ -91,14 +96,14 @@ export const StackCard = memo(function StackCard({
         e.stopPropagation();
         onToggleExpand(stack.id);
       }}
+      onPointerDown={(e) => e.stopPropagation()}
       className={clsx(
         "shrink-0 cursor-pointer rounded p-1 text-muted-foreground transition-opacity hover:text-foreground",
         layout === "grid" && "bg-card/80 !p-0.5",
-        isExpanded ? "opacity-100" : "opacity-0 group-hover:opacity-100"
+        isExpanded ? "opacity-100" : "opacity-60 md:opacity-0 md:group-hover:opacity-100"
       )}
       title={isExpanded ? t("collapsePages") : t("expandPages")}
       aria-label={isExpanded ? t("collapsePages") : t("expandPages")}
-      draggable={false}
     >
       {isExpanded ? <EyeIcon /> : <EyeOffIcon />}
     </button>
@@ -108,13 +113,14 @@ export const StackCard = memo(function StackCard({
     <button
       type="button"
       onClick={(e) => { e.stopPropagation(); onRemove(stack.id); }}
+      onPointerDown={(e) => e.stopPropagation()}
       className={clsx(
-        "shrink-0 cursor-pointer rounded p-1 text-muted-foreground opacity-0 transition-opacity hover:text-foreground group-hover:opacity-100",
-        layout === "grid" && "bg-card/80 !p-0.5"
+        "shrink-0 cursor-pointer rounded p-1 text-muted-foreground transition-opacity hover:text-foreground",
+        layout === "grid" && "bg-card/80 !p-0.5",
+        "opacity-60 md:opacity-0 md:group-hover:opacity-100"
       )}
       title={t("remove")}
       aria-label={t("remove")}
-      draggable={false}
     >
       <CloseIcon />
     </button>
@@ -125,18 +131,20 @@ export const StackCard = memo(function StackCard({
   if (layout === "grid") {
     return (
       <div
+        ref={setNodeRef}
+        style={dragStyle}
         className={clsx(
           "group relative cursor-grab select-none transition-colors active:cursor-grabbing",
           isDragging && "opacity-0"
         )}
         onContextMenu={contextMenuHandler}
         onClick={handleClick}
-        {...dragProps}
+        {...attributes}
+        {...listeners}
       >
         {isStack ? (
           <div className="relative">
             <StackedLayers size="lg" />
-            {/* Front card */}
             <div className={clsx(
               "relative rounded-lg border bg-card p-2 shadow-[0_2px_8px_rgba(0,0,0,0.1)] dark:shadow-[0_2px_8px_rgba(0,0,0,0.3)]",
               selectionBorderClass(isSelected, isDragging),
@@ -172,6 +180,8 @@ export const StackCard = memo(function StackCard({
 
   return (
     <div
+      ref={setNodeRef}
+      style={dragStyle}
       className={clsx(
         "group flex cursor-grab select-none items-center gap-2.5 rounded-lg p-2.5 transition-colors active:cursor-grabbing",
         isDragging ? "opacity-0" : "hover:bg-background",
@@ -179,7 +189,8 @@ export const StackCard = memo(function StackCard({
       )}
       onContextMenu={contextMenuHandler}
       onClick={handleClick}
-      {...dragProps}
+      {...attributes}
+      {...listeners}
     >
       {isStack ? (
         <div className="relative shrink-0">

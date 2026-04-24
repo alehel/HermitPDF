@@ -2,17 +2,35 @@
 
 import clsx from "clsx";
 import { useTranslations } from "next-intl";
+import { Fragment, useCallback, useRef, useState } from "react";
+import {
+  DndContext,
+  DragOverlay,
+  MouseSensor,
+  TouchSensor,
+  KeyboardSensor,
+  useSensor,
+  useSensors,
+  pointerWithin,
+  type DragStartEvent,
+  type DragEndEvent,
+  type Active,
+  type Over,
+} from "@dnd-kit/core";
+import {
+  SortableContext,
+  sortableKeyboardCoordinates,
+  verticalListSortingStrategy,
+  rectSortingStrategy,
+} from "@dnd-kit/sortable";
 import { PageStack } from "@/lib/types";
 import { StackCard } from "./StackCard";
 import { PageExpansionBox } from "./PageExpansionBox";
 import { ContextMenu, ContextMenuItem } from "./ContextMenu";
 import { SplitIcon, DownloadIcon, ImageIcon } from "./Icons";
 import { DropZone } from "./DropZone";
-import { DropIndicator, DropIndicatorVertical } from "./DropIndicators";
-import { StackDragOverlay } from "./StackDragOverlay";
+import { StackDragPreview, PageDragPreview } from "./DragPreviews";
 import { exportMergedPdf, downloadPdf } from "@/lib/pdfExport";
-import { Fragment, useCallback, useRef } from "react";
-import { usePanelDragDrop } from "@/hooks/usePanelDragDrop";
 
 interface StackPanelProps {
   stacks: PageStack[];
@@ -43,7 +61,21 @@ interface StackPanelProps {
   onDeselect?: () => void;
 }
 
-/** Build context menu items for a right-clicked stack (not a page). */
+interface StackSortableData {
+  type: "stack";
+  stackId: string;
+  index: number;
+}
+
+interface PageSortableData {
+  type: "page";
+  stackId: string;
+  pageIndex: number;
+  pageId: string;
+}
+
+type SortableData = StackSortableData | PageSortableData;
+
 function buildStackContextMenuItems(
   stack: PageStack | undefined,
   stackId: string,
@@ -52,7 +84,6 @@ function buildStackContextMenuItems(
   tItem: (key: string) => string
 ): ContextMenuItem[] {
   const items: ContextMenuItem[] = [];
-
   if (stack && stack.pages.length > 1) {
     items.push({
       label: tItem("splitIntoPages"),
@@ -60,7 +91,6 @@ function buildStackContextMenuItems(
       onClick: () => onSplitStack(stackId),
     });
   }
-
   items.push({
     label: tItem(stack && stack.pages.length > 1 ? "downloadStack" : "downloadPage"),
     icon: <DownloadIcon />,
@@ -70,7 +100,6 @@ function buildStackContextMenuItems(
       downloadPdf(bytes, stack.name);
     },
   });
-
   if (onExtractStackImages) {
     items.push({
       label: tItem("extractStackImages"),
@@ -78,11 +107,9 @@ function buildStackContextMenuItems(
       onClick: () => onExtractStackImages(stackId),
     });
   }
-
   return items;
 }
 
-/** Build context menu items for a right-clicked page within a stack. */
 function buildPageContextMenuItems(
   stack: PageStack | undefined,
   pageIndex: number,
@@ -90,7 +117,6 @@ function buildPageContextMenuItems(
   tItem: (key: string) => string
 ): ContextMenuItem[] {
   const items: ContextMenuItem[] = [];
-
   items.push({
     label: tItem("downloadPage"),
     icon: <DownloadIcon />,
@@ -103,7 +129,6 @@ function buildPageContextMenuItems(
       downloadPdf(bytes, `${stem}_page${pageIndex + 1}.pdf`);
     },
   });
-
   if (onExtractPageImages && stack) {
     items.push({
       label: tItem("extractPageImages"),
@@ -111,10 +136,15 @@ function buildPageContextMenuItems(
       onClick: () => onExtractPageImages(stack.id, pageIndex),
     });
   }
-
   return items;
 }
 
+function getSortableData(node: Active | Over | null | undefined): SortableData | null {
+  const data = node?.data.current;
+  if (!data) return null;
+  if (data.type === "stack" || data.type === "page") return data as SortableData;
+  return null;
+}
 
 export function StackPanel({
   stacks,
@@ -146,31 +176,109 @@ export function StackPanel({
 }: StackPanelProps) {
   const tItem = useTranslations("documentItem");
   const t = useTranslations("documentPanel");
-  const listRef = useRef<HTMLDivElement>(null);
   const gridCardRefs = useRef<Map<string, HTMLDivElement>>(new Map());
 
-  const {
-    dropIndex,
-    dragIndex,
-    isSameContainerDrag,
-    handleDragOver,
-    handleDragLeave,
-    handleDrop,
-    handleItemDragStart,
-    handleItemDragEnd,
-    getItemStyle,
-    overlayElRef,
-    overlayOriginPos,
-  } = usePanelDragDrop({
-    stackCount: stacks.length,
-    listRef,
-    onFilesAdded,
-    onReorderStack,
-    onExtractPageToList,
-    viewMode,
-  });
+  const [activeDrag, setActiveDrag] = useState<SortableData | null>(null);
+  const [fileDragOver, setFileDragOver] = useState(false);
 
-  const handleCardClick = onStackClick;
+  const sensors = useSensors(
+    useSensor(MouseSensor, {
+      activationConstraint: { distance: 5 },
+    }),
+    useSensor(TouchSensor, {
+      activationConstraint: { delay: 200, tolerance: 8 },
+    }),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    })
+  );
+
+  const handleDragStart = useCallback((e: DragStartEvent) => {
+    setActiveDrag(getSortableData(e.active));
+  }, []);
+
+  const handleDragCancel = useCallback(() => setActiveDrag(null), []);
+
+  const handleDragEnd = useCallback((e: DragEndEvent) => {
+    setActiveDrag(null);
+    const active = getSortableData(e.active);
+    const over = getSortableData(e.over);
+    if (!active || !over) return;
+    if (e.active.id === e.over?.id) return;
+
+    // Stack → Stack: reorder stacks
+    if (active.type === "stack" && over.type === "stack") {
+      const oldIndex = active.index;
+      const newIndex = over.index;
+      if (oldIndex === newIndex) return;
+      const slotIndex = newIndex > oldIndex ? newIndex + 1 : newIndex;
+      onReorderStack(oldIndex, slotIndex);
+      return;
+    }
+
+    // Page → Page
+    if (active.type === "page" && over.type === "page") {
+      if (active.stackId === over.stackId) {
+        // Same stack — reorder
+        const oldIndex = active.pageIndex;
+        const newIndex = over.pageIndex;
+        if (oldIndex === newIndex) return;
+        const slotIndex = newIndex > oldIndex ? newIndex + 1 : newIndex;
+        onReorderPage?.(active.stackId, oldIndex, slotIndex);
+      } else {
+        // Cross-stack page move
+        onMovePageBetweenStacks?.(
+          active.stackId,
+          active.pageIndex,
+          over.stackId,
+          over.pageIndex
+        );
+      }
+      return;
+    }
+
+    // Stack → Page: insert source stack's pages into target's expanded stack
+    if (active.type === "stack" && over.type === "page") {
+      onInsertStackIntoExpanded?.(over.stackId, active.index, over.pageIndex);
+      return;
+    }
+
+    // Page → Stack: extract page as new stack at target's position
+    if (active.type === "page" && over.type === "stack") {
+      onExtractPageToList?.(active.stackId, active.pageIndex, over.index);
+      return;
+    }
+  }, [
+    onReorderStack,
+    onReorderPage,
+    onMovePageBetweenStacks,
+    onInsertStackIntoExpanded,
+    onExtractPageToList,
+  ]);
+
+  // Native OS file drops — dnd-kit doesn't handle these
+  const handleNativeDragOver = useCallback((e: React.DragEvent) => {
+    if (!e.dataTransfer.types.includes("Files")) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "copy";
+    setFileDragOver(true);
+  }, []);
+
+  const handleNativeDragLeave = useCallback((e: React.DragEvent) => {
+    const target = e.currentTarget as HTMLElement;
+    if (target && !target.contains(e.relatedTarget as Node)) {
+      setFileDragOver(false);
+    }
+  }, []);
+
+  const handleNativeDrop = useCallback((e: React.DragEvent) => {
+    if (!e.dataTransfer.types.includes("Files")) return;
+    e.preventDefault();
+    setFileDragOver(false);
+    if (e.dataTransfer.files.length > 0) {
+      onFilesAdded(e.dataTransfer.files);
+    }
+  }, [onFilesAdded]);
 
   const handleBackgroundClick = useCallback((e: React.MouseEvent) => {
     const target = e.target as HTMLElement;
@@ -179,133 +287,147 @@ export function StackPanel({
     }
   }, [onDeselect]);
 
-  return (
-    <aside suppressHydrationWarning style={style} className={clsx("flex min-w-0 flex-col bg-background", previewVisible !== false && "border-r border-border")}>
-      <div
-        ref={listRef}
-        className={clsx(
-          "flex-1 overflow-y-auto p-4 transition-colors",
-          dropIndex !== null && !isSameContainerDrag && "bg-accent/40"
-        )}
-        onDragOver={handleDragOver}
-        onDragLeave={handleDragLeave}
-        onDrop={handleDrop}
-        onClick={handleBackgroundClick}
-      >
-        {stacks.length === 0 ? (
-          <DropZone
-            title={t("dropTitle")}
-            subtitle={t("dropSubtitle")}
-            privacyNote={t("privacyNote")}
-            onClick={onBrowseFiles}
-            fill
-          />
-        ) : viewMode === "list" ? (
-          <ul>
-            {stacks.map((stack, i) => (
-              <li key={stack.id} data-doc-item className="list-none" style={getItemStyle(i)}>
-                {!isSameContainerDrag && dropIndex === i && <DropIndicator />}
-                <StackCard
-                  stack={stack}
-                  index={i}
-                  layout="list"
-                  onRemove={onRemoveStack}
-                  onDragStart={handleItemDragStart}
-                  onDragEnd={handleItemDragEnd}
-                  isDragging={dragIndex === i}
-                  onContextMenu={onContextMenu}
-                  isExpanded={expandedStackIds?.has(stack.id)}
-                  onToggleExpand={onToggleExpand}
-                  isSelected={stack.pages.some((p) => selectedPageIds.has(p.id))}
-                  onClick={handleCardClick}
-                />
-                {expandedStackIds?.has(stack.id) && stack.pages.length > 0 && onReorderPage && onInsertStackIntoExpanded && onMovePageBetweenStacks && (
-                  <PageExpansionBox
-                    stackId={stack.id}
-                    pages={stack.pages}
-                    onReorderPage={onReorderPage}
-                    onInsertStackIntoExpanded={onInsertStackIntoExpanded}
-                    onMovePageBetweenStacks={onMovePageBetweenStacks}
-                    onPageContextMenu={onPageContextMenu}
-                    selectedPageIds={selectedPageIds}
-                    onPageClick={onPageClick}
-                    thumbnailVersions={thumbnailVersions}
-                  />
-                )}
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <div className="grid grid-cols-[repeat(auto-fill,minmax(140px,1fr))] gap-4">
-            {stacks.map((stack, i) => {
-              const isExpanded = expandedStackIds?.has(stack.id);
-              return (
-                <Fragment key={stack.id}>
-                  <div
-                    data-doc-item
-                    className="relative"
-                    style={getItemStyle(i)}
-                    ref={(el) => {
-                      if (el) gridCardRefs.current.set(stack.id, el);
-                      else gridCardRefs.current.delete(stack.id);
-                    }}
-                  >
-                    {!isSameContainerDrag && dropIndex === i && <DropIndicatorVertical />}
-                    <StackCard
-                      stack={stack}
-                      index={i}
-                      layout="grid"
-                      onRemove={onRemoveStack}
-                      onDragStart={handleItemDragStart}
-                      onDragEnd={handleItemDragEnd}
-                      isDragging={dragIndex === i}
-                      onContextMenu={onContextMenu}
-                      isExpanded={isExpanded}
-                      onToggleExpand={onToggleExpand}
-                      isSelected={stack.pages.some((p) => selectedPageIds.has(p.id))}
-                      onClick={handleCardClick}
-                    />
-                  </div>
-                  {isExpanded && stack.pages.length > 0 && onReorderPage && onInsertStackIntoExpanded && onMovePageBetweenStacks && (
-                    <div style={{ gridColumn: "1 / -1" }}>
-                      <PageExpansionBox
-                        stackId={stack.id}
-                        pages={stack.pages}
-                        onReorderPage={onReorderPage}
-                        onInsertStackIntoExpanded={onInsertStackIntoExpanded}
-                        onMovePageBetweenStacks={onMovePageBetweenStacks}
-                        onPageContextMenu={onPageContextMenu}
-                        variant="grid"
-                        parentCardElement={gridCardRefs.current.get(stack.id)}
-                        selectedPageIds={selectedPageIds}
-                        onPageClick={onPageClick}
-                        thumbnailVersions={thumbnailVersions}
-                      />
-                    </div>
-                  )}
-                </Fragment>
-              );
-            })}
-            {!isSameContainerDrag && dropIndex === stacks.length && stacks.length > 0 && (
-              <div className="relative">
-                <DropIndicatorVertical />
-              </div>
-            )}
-          </div>
-        )}
-        {!isSameContainerDrag && viewMode === "list" && dropIndex === stacks.length && stacks.length > 0 && (
-          <DropIndicator />
-        )}
-      </div>
+  const activeStack = activeDrag?.type === "stack"
+    ? stacks.find((s) => s.id === activeDrag.stackId)
+    : null;
+  const activePage = activeDrag?.type === "page"
+    ? stacks.find((s) => s.id === activeDrag.stackId)?.pages[activeDrag.pageIndex]
+    : null;
 
-      {dragIndex !== null && stacks[dragIndex] && (
-        <StackDragOverlay
-          stack={stacks[dragIndex]}
-          overlayElRef={overlayElRef}
-          layout={viewMode}
-          initialPos={overlayOriginPos}
-        />
+  return (
+    <aside
+      suppressHydrationWarning
+      style={style}
+      className={clsx(
+        "flex min-w-0 flex-col bg-background",
+        previewVisible !== false && "border-r border-border",
       )}
+    >
+      <DndContext
+        sensors={sensors}
+        collisionDetection={pointerWithin}
+        onDragStart={handleDragStart}
+        onDragEnd={handleDragEnd}
+        onDragCancel={handleDragCancel}
+      >
+        <div
+          className={clsx(
+            "flex-1 overflow-y-auto p-4 transition-colors",
+            fileDragOver && "bg-accent/40",
+          )}
+          onDragOver={handleNativeDragOver}
+          onDragLeave={handleNativeDragLeave}
+          onDrop={handleNativeDrop}
+          onClick={handleBackgroundClick}
+        >
+          {stacks.length === 0 ? (
+            <DropZone
+              title={t("dropTitle")}
+              subtitle={t("dropSubtitle")}
+              privacyNote={t("privacyNote")}
+              onClick={onBrowseFiles}
+              fill
+            />
+          ) : (
+            <SortableContext
+              items={stacks.map((s) => s.id)}
+              strategy={viewMode === "grid" ? rectSortingStrategy : verticalListSortingStrategy}
+            >
+              {viewMode === "list" ? (
+                <ul>
+                  {stacks.map((stack, i) => (
+                    <li key={stack.id} data-doc-item className="list-none">
+                      <StackCard
+                        stack={stack}
+                        index={i}
+                        layout="list"
+                        onRemove={onRemoveStack}
+                        onContextMenu={onContextMenu}
+                        isExpanded={expandedStackIds?.has(stack.id)}
+                        onToggleExpand={onToggleExpand}
+                        isSelected={stack.pages.some((p) => selectedPageIds.has(p.id))}
+                        onClick={onStackClick}
+                      />
+                      {expandedStackIds?.has(stack.id) && stack.pages.length > 0 && (
+                        <PageExpansionBox
+                          stackId={stack.id}
+                          pages={stack.pages}
+                          onPageContextMenu={onPageContextMenu}
+                          selectedPageIds={selectedPageIds}
+                          onPageClick={onPageClick}
+                          thumbnailVersions={thumbnailVersions}
+                        />
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <div className="grid grid-cols-[repeat(auto-fill,minmax(140px,1fr))] gap-4">
+                  {stacks.map((stack, i) => {
+                    const isExpanded = expandedStackIds?.has(stack.id);
+                    return (
+                      <Fragment key={stack.id}>
+                        <div
+                          data-doc-item
+                          className="relative"
+                          ref={(el) => {
+                            if (el) gridCardRefs.current.set(stack.id, el);
+                            else gridCardRefs.current.delete(stack.id);
+                          }}
+                        >
+                          <StackCard
+                            stack={stack}
+                            index={i}
+                            layout="grid"
+                            onRemove={onRemoveStack}
+                            onContextMenu={onContextMenu}
+                            isExpanded={isExpanded}
+                            onToggleExpand={onToggleExpand}
+                            isSelected={stack.pages.some((p) => selectedPageIds.has(p.id))}
+                            onClick={onStackClick}
+                          />
+                        </div>
+                        {isExpanded && stack.pages.length > 0 && (
+                          <div style={{ gridColumn: "1 / -1" }}>
+                            <PageExpansionBox
+                              stackId={stack.id}
+                              pages={stack.pages}
+                              onPageContextMenu={onPageContextMenu}
+                              variant="grid"
+                              parentCardElement={gridCardRefs.current.get(stack.id)}
+                              selectedPageIds={selectedPageIds}
+                              onPageClick={onPageClick}
+                              thumbnailVersions={thumbnailVersions}
+                            />
+                          </div>
+                        )}
+                      </Fragment>
+                    );
+                  })}
+                </div>
+              )}
+            </SortableContext>
+          )}
+        </div>
+
+        <DragOverlay>
+          {activeStack ? (
+            <StackDragPreview stack={activeStack} layout={viewMode} />
+          ) : activePage && activeDrag?.type === "page" ? (
+            <PageDragPreview
+              pageRef={activePage}
+              pageIndex={activeDrag.pageIndex}
+              layout={
+                stacks.find((s) => s.id === activeDrag.stackId) &&
+                expandedStackIds?.has(activeDrag.stackId) &&
+                viewMode === "grid"
+                  ? "tile"
+                  : "row"
+              }
+            />
+          ) : null}
+        </DragOverlay>
+      </DndContext>
 
       {contextMenu && (
         <ContextMenu
@@ -331,4 +453,3 @@ export function StackPanel({
     </aside>
   );
 }
-
