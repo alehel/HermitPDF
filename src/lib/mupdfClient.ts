@@ -106,7 +106,11 @@ export function releaseDocument(docId: string): void {
   }
 }
 
-/** Extract embedded images from a single page. */
+/**
+ * Extract embedded images from a single page.
+ * JPEG/JP2 images come out in their original bytes with color profiles;
+ * other image data is decoded and re-encoded as PNG.
+ */
 export async function extractImagesFromPage(
   docId: string,
   pageIndex: number
@@ -139,14 +143,14 @@ export async function getImagePositions(
   return getWorker().getImagePositions(handle, pageIndex, dpi, rotation) as Promise<ImagePosition[]>;
 }
 
-/** Extract a single image by index from a page. */
+/** Extract a single image by on-page index (matches getImagePositions ordering). Always PNG. */
 export async function extractSingleImage(
   docId: string,
   pageIndex: number,
   imageIndex: number
-): Promise<{ width: number; height: number; pngData: Uint8Array } | null> {
+): Promise<{ width: number; height: number; data: Uint8Array; mimeType: string; extension: string } | null> {
   const handle = await ensureLoaded(docId);
-  return getWorker().extractSingleImage(handle, pageIndex, imageIndex) as Promise<{ width: number; height: number; pngData: Uint8Array } | null>;
+  return getWorker().extractSingleImage(handle, pageIndex, imageIndex);
 }
 
 /** Apply Bates numbering to all pages of a document. */

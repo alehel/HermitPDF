@@ -9,10 +9,10 @@ interface WizardTitleProps {
 export function WizardTitle({ icon, title, badge }: WizardTitleProps) {
   return (
     <div className="mb-6 flex items-center justify-center gap-2">
-      <div className="flex h-7 w-7 items-center justify-center rounded-md bg-accent text-primary">
+      <div className="flex h-9 w-9 items-center justify-center rounded-md bg-accent text-primary">
         {icon}
       </div>
-      <h1 className="text-lg font-medium text-foreground">{title}</h1>
+      <h1 className="text-xl font-medium text-foreground">{title}</h1>
       {badge}
     </div>
   );

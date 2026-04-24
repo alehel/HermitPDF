@@ -24,7 +24,9 @@ export interface ExtractedImage {
   imageIndex: number;
   width: number;
   height: number;
-  pngData: Uint8Array;
+  data: Uint8Array;
+  mimeType: string;
+  extension: string;
 }
 
 export interface WizardFile {
