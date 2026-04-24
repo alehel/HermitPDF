@@ -10,7 +10,11 @@ import { PageStack, PageRef } from "@/lib/types";
 import { PdfPage } from "./PdfPage";
 import { ContextMenu } from "./ContextMenu";
 import { extractSingleImage } from "@/lib/mupdfClient";
-import { downloadSingleImage } from "@/lib/imageExport";
+import {
+  buildExtractedImageFilename,
+  downloadSingleImage,
+  pdfNameStem,
+} from "@/lib/imageExport";
 
 type WorkspaceItem =
   | { kind: "header"; stackId: string; name: string; isFirst: boolean }
@@ -65,11 +69,12 @@ export function Workspace({
       const stackName =
         stacks.find((s) => s.pages.some((p) => p.id === pageRef.id))?.name ??
         "image";
-      const stem = stackName.replace(/\.pdf$/i, "");
-      downloadSingleImage(
-        result.pngData,
-        `${stem}_p${pageRef.sourcePageIndex + 1}_img${imageIndex + 1}.png`
-      );
+      const filename = buildExtractedImageFilename(pdfNameStem(stackName), {
+        pageIndex: pageRef.sourcePageIndex,
+        imageIndex,
+        extension: result.extension,
+      });
+      downloadSingleImage(result.data, filename, result.mimeType);
     }
   }, [imageContextMenu, stacks]);
 

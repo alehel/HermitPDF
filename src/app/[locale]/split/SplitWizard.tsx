@@ -201,7 +201,7 @@ export function SplitWizard() {
       />
 
       <WizardContainer
-        icon={<ScissorsIcon className="!h-4 !w-4" />}
+        icon={<ScissorsIcon className="!h-5 !w-5" />}
         title={t("title")}
         empty={!file}
         footer={file ? {

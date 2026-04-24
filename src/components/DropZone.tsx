@@ -53,7 +53,7 @@ export function DropZone({
           <p className="mt-1 text-sm text-muted-foreground">{subtitle}</p>
         </div>
       </button>
-      <p className="mt-4 text-xs text-muted-foreground">{privacyNote}</p>
+      <p className="mt-4 text-sm text-muted-foreground">{privacyNote}</p>
     </div>
   );
 }

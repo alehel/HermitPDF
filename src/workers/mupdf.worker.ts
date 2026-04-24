@@ -2,7 +2,7 @@
 declare var $libmupdf_wasm_Module: unknown;
 
 import * as Comlink from "comlink";
-import type { BatesPosition } from "@/lib/types";
+import type { BatesPosition, ExtractedImage } from "@/lib/types";
 import {
   formatBatesNumber,
   computeShrinkTransform,
@@ -27,6 +27,11 @@ type BatesStampWorkerConfig = {
   padding: number;
   shrink: boolean;
 };
+
+// Aliases for MuPDF runtime instance types so signatures stay readable.
+type MupdfDocument = InstanceType<(typeof import("mupdf"))["Document"]>;
+type MupdfPDFDocument = InstanceType<(typeof import("mupdf"))["PDFDocument"]>;
+type MupdfPDFObject = InstanceType<(typeof import("mupdf"))["PDFObject"]>;
 
 // Lazy-load mupdf WASM — initialized on first use, not at module load time.
 // This lets Comlink.expose() run immediately so messages aren't lost.
@@ -170,6 +175,421 @@ function transformRect(
   return mupdf.Rect.transform(rect, matrix);
 }
 
+/**
+ * Inspect an image XObject's /Filter and decide whether we can emit its stream
+ * as a standalone image file. DCTDecode → JPEG bytes, JPXDecode → JPEG 2000.
+ * Chained filters (e.g. [ASCII85Decode, DCTDecode]) can't be saved standalone,
+ * so we only treat single-element filter arrays as raw candidates.
+ * Anything else returns null — caller falls back to MuPDF decode + PNG.
+ */
+function detectRawFormat(filter: MupdfPDFObject): { ext: string; mime: string } | null {
+  const forName = (name: string) => {
+    if (name === "DCTDecode") return { ext: "jpg", mime: "image/jpeg" };
+    if (name === "JPXDecode") return { ext: "jp2", mime: "image/jp2" };
+    return null;
+  };
+  if (filter.isName()) return forName(filter.asName());
+  if (filter.isArray() && filter.length === 1) {
+    const first = filter.get(0);
+    if (first.isName()) return forName(first.asName());
+  }
+  return null;
+}
+
+/**
+ * Read the ICC color profile bytes from an image XObject's /ColorSpace, if any.
+ *
+ * In PDFs, a JPEG with a tagged color profile doesn't embed the profile in its
+ * own bytes — the encoder typically strips APP2 markers from the JPEG and
+ * hoists the profile up into the image XObject's /ColorSpace entry. That entry
+ * can take two forms we need to handle:
+ *
+ *   (a) Inline array:
+ *         /ColorSpace [/ICCBased <profile-stream-ref>]
+ *
+ *   (b) Named reference to the containing page's resource dict:
+ *         /ColorSpace /CS0
+ *       …where the page's Resources dict defines:
+ *         /Resources << /ColorSpace << /CS0 [/ICCBased <profile-stream-ref>] >> >>
+ *
+ * Form (b) is a dedup trick: when a page has multiple images sharing a profile,
+ * the encoder (Photoshop, InDesign, most print-to-PDF flows) stores the ICCBased
+ * array once in the page's resources and each image just references it by name.
+ * We have to walk through the resource dict to recover the profile stream.
+ *
+ * The profile stream itself is usually FlateDecode-compressed; readStream()
+ * returns the decompressed bytes — exactly what we need to re-embed into the JPEG.
+ *
+ * Returns null for the cases where there's nothing to inject: Device* spaces
+ * (no profile at all), CalRGB/CalGray (non-ICC calibrated spaces), Pattern
+ * spaces, and any named reference that can't be resolved through the resources
+ * we were handed. Also returns null if the profile stream can't be read.
+ */
+function readIccProfileFromXObject(
+  xobj: MupdfPDFObject,
+  resources: MupdfPDFObject
+): Uint8Array<ArrayBuffer> | null {
+  let cs = xobj.get("ColorSpace");
+  if (cs.isNull()) return null;
+
+  // Form (b): the ColorSpace is a Name. Resolve it against the enclosing
+  // resource dict's /ColorSpace sub-dict. Device* names resolve to themselves
+  // (no profile) and need no lookup. Anything else must exist in resources
+  // or we can't recover it.
+  if (cs.isName()) {
+    const name = cs.asName();
+    if (
+      name === "DeviceRGB" ||
+      name === "DeviceGray" ||
+      name === "DeviceCMYK" ||
+      name === "Pattern"
+    ) {
+      return null;
+    }
+    if (resources.isNull()) return null;
+    const csDict = resources.get("ColorSpace");
+    if (csDict.isNull() || !csDict.isDictionary()) return null;
+    cs = csDict.get(name);
+    if (cs.isNull()) return null;
+  }
+
+  if (!cs.isArray() || cs.length < 2) return null;
+
+  const kind = cs.get(0);
+  if (!kind.isName() || kind.asName() !== "ICCBased") return null;
+
+  const profileStream = cs.get(1);
+  try {
+    const buf = profileStream.readStream();
+    try {
+      return buf.asUint8Array().slice();
+    } finally {
+      buf.destroy();
+    }
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Scan the header region of a JPEG for an existing APP2 "ICC_PROFILE" segment.
+ *
+ * Well-behaved PDF encoders strip APP segments from embedded JPEGs, but some
+ * leave them intact. If the profile is already in the JPEG bytes, we must not
+ * inject a second one — duplicate profiles can confuse color-managed viewers.
+ *
+ * Walk segment markers starting at SOI. Each APPn marker is `FF Ex` followed
+ * by a 2-byte big-endian length (inclusive of the length bytes themselves).
+ * Stop at the first non-APP marker — by the JPEG spec, APP segments appear
+ * only in the header region, before SOF/DQT/DHT/SOS.
+ */
+const ICC_TAG = "ICC_PROFILE\0";
+
+function hasEmbeddedIccProfile(jpegBytes: Uint8Array): boolean {
+  if (jpegBytes.length < 4) return false;
+  if (jpegBytes[0] !== 0xff || jpegBytes[1] !== 0xd8) return false; // not a JPEG SOI
+
+  const decoder = new TextDecoder("latin1");
+  let p = 2;
+  while (p + 4 <= jpegBytes.length) {
+    if (jpegBytes[p] !== 0xff) return false; // malformed — bail safely
+    const marker = jpegBytes[p + 1];
+    // APPn markers are 0xE0..0xEF. Anything else means we've moved past the
+    // header region (SOF, DQT, SOS, …), so there's no ICC profile to find.
+    if (marker < 0xe0 || marker > 0xef) return false;
+
+    const segLen = (jpegBytes[p + 2] << 8) | jpegBytes[p + 3];
+    if (segLen < 2 || p + 2 + segLen > jpegBytes.length) return false;
+
+    if (marker === 0xe2 && segLen >= 2 + ICC_TAG.length) {
+      const tag = decoder.decode(jpegBytes.subarray(p + 4, p + 4 + ICC_TAG.length));
+      if (tag === ICC_TAG) return true;
+    }
+
+    p += 2 + segLen;
+  }
+  return false;
+}
+
+/**
+ * Build a new JPEG that embeds the given ICC profile as one or more APP2
+ * "ICC_PROFILE" segments, inserted right after the SOI marker.
+ *
+ * Segment layout (per the ICC-in-JPEG spec, ICC.1 Annex B.4):
+ *
+ *   FF E2                       APP2 marker
+ *   LL LL                       segment length, big-endian, includes itself
+ *   'I' 'C' 'C' '_' 'P' 'R' 'O' 'F' 'I' 'L' 'E' 00    12-byte marker
+ *   NN                          1-based chunk index
+ *   MM                          total chunk count (same in every segment)
+ *   <profile-chunk>             up to 65519 bytes of ICC data
+ *
+ * A JPEG segment's length field is 16-bit, so its payload maxes out at
+ * 65533 bytes. After the 14-byte ICC header (12-byte tag + 2 sequence bytes),
+ * that leaves 65519 bytes of profile data per chunk. Profiles larger than
+ * ~16 MB (255 chunks) can't be represented — this limit is never hit in
+ * practice (real-world ICC profiles are typically 500 B – 10 KB).
+ *
+ * Inserting right after SOI is always valid: APP segments have no required
+ * ordering relative to each other, and all compliant JPEG decoders scan the
+ * full header region for APPn markers before decoding image data.
+ */
+function wrapJpegWithIccProfile(
+  jpegBytes: Uint8Array<ArrayBuffer>,
+  iccBytes: Uint8Array<ArrayBuffer>
+): Uint8Array<ArrayBuffer> {
+  // Caller should have validated SOI, but re-check to avoid corrupting non-JPEGs.
+  if (jpegBytes.length < 2 || jpegBytes[0] !== 0xff || jpegBytes[1] !== 0xd8) {
+    return jpegBytes;
+  }
+
+  const MAX_CHUNK = 65519;      // APP2 payload cap minus the 14-byte ICC header
+  const MAX_CHUNKS = 255;        // 8-bit chunk-index field
+  const totalChunks = Math.max(1, Math.ceil(iccBytes.length / MAX_CHUNK));
+  if (totalChunks > MAX_CHUNKS) return jpegBytes;
+
+  const segments: Uint8Array[] = [];
+  for (let i = 0; i < totalChunks; i++) {
+    const start = i * MAX_CHUNK;
+    const end = Math.min(start + MAX_CHUNK, iccBytes.length);
+    const chunkLen = end - start;
+
+    // Segment length field counts: 2 (its own bytes) + 12 (tag) + 2 (seq bytes) + chunk
+    const segLen = 2 + ICC_TAG.length + 2 + chunkLen;
+    const seg = new Uint8Array(2 + segLen); // +2 for the FF E2 marker itself
+
+    seg[0] = 0xff;
+    seg[1] = 0xe2;
+    seg[2] = (segLen >> 8) & 0xff;
+    seg[3] = segLen & 0xff;
+    for (let j = 0; j < ICC_TAG.length; j++) seg[4 + j] = ICC_TAG.charCodeAt(j);
+    seg[4 + ICC_TAG.length] = i + 1;      // chunk sequence, 1-based per spec
+    seg[4 + ICC_TAG.length + 1] = totalChunks;
+    seg.set(iccBytes.subarray(start, end), 4 + ICC_TAG.length + 2);
+    segments.push(seg);
+  }
+
+  // Assemble: SOI + APP2 segment(s) + rest of original JPEG.
+  const rest = jpegBytes.subarray(2);
+  const totalLen = 2 + segments.reduce((s, a) => s + a.length, 0) + rest.length;
+  const out = new Uint8Array(totalLen);
+  out[0] = 0xff;
+  out[1] = 0xd8;
+  let pos = 2;
+  for (const seg of segments) {
+    out.set(seg, pos);
+    pos += seg.length;
+  }
+  out.set(rest, pos);
+  return out;
+}
+
+/**
+ * Mutable collector threaded through the recursive image walk. Bundling these
+ * together keeps function signatures short and makes the fact that we're
+ * building up shared state explicit.
+ */
+interface ImageWalkCtx {
+  pdf: MupdfPDFDocument;
+  seen: Set<number>;      // indirect object numbers already emitted
+  images: ExtractedImage[];
+  transferables: ArrayBuffer[];
+  nextImageIndex: number;
+}
+
+/**
+ * Extract one Image XObject, preserving its original encoding when the filter
+ * is one we can save as a standalone file; otherwise decode + re-encode to PNG.
+ */
+function extractImageXObject(
+  ctx: ImageWalkCtx,
+  xobj: MupdfPDFObject,
+  // Enclosing resource dict — needed to resolve named /ColorSpace references
+  // (see readIccProfileFromXObject for the two forms that show up).
+  resources: MupdfPDFObject,
+  pageIndex: number
+): void {
+  // Dedup across pages by indirect object number — shared XObjects reuse the same ref.
+  const objNum = xobj.isIndirect() ? xobj.asIndirect() : 0;
+  if (objNum > 0) {
+    if (ctx.seen.has(objNum)) return;
+    ctx.seen.add(objNum);
+  }
+
+  const widthObj = xobj.get("Width");
+  const heightObj = xobj.get("Height");
+  if (!widthObj.isNumber() || !heightObj.isNumber()) return;
+  const w = widthObj.asNumber();
+  const h = heightObj.asNumber();
+  if (w < 10 || h < 10) return;
+
+  const pushImage = (data: Uint8Array<ArrayBuffer>, mimeType: string, extension: string) => {
+    ctx.images.push({
+      pageIndex,
+      imageIndex: ctx.nextImageIndex++,
+      width: w,
+      height: h,
+      data,
+      mimeType,
+      extension,
+    });
+    ctx.transferables.push(data.buffer);
+  };
+
+  const rawFormat = detectRawFormat(xobj.get("Filter"));
+  if (rawFormat) {
+    try {
+      const rawBuffer = xobj.readRawStream();
+      try {
+        let data = rawBuffer.asUint8Array().slice();
+
+        // For JPEGs, re-embed the ICC color profile the PDF keeps in /ColorSpace.
+        // We only splice one in if the JPEG bytes don't already carry their own,
+        // to avoid producing a file with two conflicting profiles. JP2 profiles
+        // live in the file's box structure rather than APP markers, so this
+        // wrapping step doesn't apply there — pass those bytes through as-is.
+        if (rawFormat.mime === "image/jpeg" && !hasEmbeddedIccProfile(data)) {
+          const iccBytes = readIccProfileFromXObject(xobj, resources);
+          if (iccBytes) data = wrapJpegWithIccProfile(data, iccBytes);
+        }
+
+        pushImage(data, rawFormat.mime, rawFormat.ext);
+        return;
+      } finally {
+        rawBuffer.destroy();
+      }
+    } catch {
+      // Raw stream unreadable; fall through to PNG decode path.
+    }
+  }
+
+  const image = ctx.pdf.loadImage(xobj);
+  try {
+    const pixmap = image.toPixmap();
+    try {
+      pushImage(pixmap.asPNG().slice(), "image/png", "png");
+    } finally {
+      pixmap.destroy();
+    }
+  } finally {
+    image.destroy();
+  }
+}
+
+/**
+ * Walk a Resources dict recursively, descending into Form XObjects so that
+ * images nested inside reused form content are extracted too.
+ */
+function walkResourcesForImages(
+  ctx: ImageWalkCtx,
+  resources: MupdfPDFObject,
+  pageIndex: number
+): void {
+  if (resources.isNull()) return;
+  const xobjs = resources.get("XObject");
+  if (xobjs.isNull() || !xobjs.isDictionary()) return;
+
+  xobjs.forEach((val) => {
+    const subtype = val.get("Subtype");
+    if (!subtype.isName()) return;
+    const subtypeName = subtype.asName();
+    if (subtypeName === "Image") {
+      // Pass down the current resources so that images whose /ColorSpace is a
+      // Name (e.g. /CS0) can be resolved against the enclosing resource dict.
+      extractImageXObject(ctx, val, resources, pageIndex);
+    } else if (subtypeName === "Form") {
+      // Form XObjects carry their own Resources dict per the PDF spec; any
+      // named colorspaces used inside are expected to be defined there rather
+      // than inherited from the page.
+      walkResourcesForImages(ctx, val.get("Resources"), pageIndex);
+    }
+  });
+}
+
+/**
+ * Raw-walk extraction path — goes directly through the PDF resource tree so
+ * DCTDecode/JPXDecode streams can be emitted untouched and ICC profiles
+ * re-embedded. Dedupes by indirect object number across pages.
+ */
+function extractImagesViaRawWalk(
+  pdf: MupdfPDFDocument,
+  pageIndices: number[]
+): { images: ExtractedImage[]; transferables: ArrayBuffer[] } {
+  const ctx: ImageWalkCtx = {
+    pdf,
+    seen: new Set(),
+    images: [],
+    transferables: [],
+    nextImageIndex: 0,
+  };
+  for (const pageIndex of pageIndices) {
+    const pageObj = pdf.findPage(pageIndex);
+    const resources = pageObj.getInheritable("Resources");
+    walkResourcesForImages(ctx, resources, pageIndex);
+  }
+  return { images: ctx.images, transferables: ctx.transferables };
+}
+
+/**
+ * Fallback extraction for non-PDF inputs (or if asPDF() returns null). Uses
+ * the structured-text walker and always emits PNG, deduped by a prefix hash
+ * since we don't have a stable object number here.
+ */
+function extractImagesViaStextWalker(
+  doc: MupdfDocument,
+  pageIndices: number[]
+): { images: ExtractedImage[]; transferables: ArrayBuffer[] } {
+  const seen = new Set<string>();
+  const images: ExtractedImage[] = [];
+  const transferables: ArrayBuffer[] = [];
+
+  for (const pageIndex of pageIndices) {
+    const page = doc.loadPage(pageIndex);
+    try {
+      const stext = page.toStructuredText("preserve-images");
+      try {
+        let imgIdx = 0;
+        stext.walk({
+          onImageBlock(_bbox, _transform, image) {
+            const w = image.getWidth();
+            const h = image.getHeight();
+            if (w < 10 || h < 10) return;
+
+            const pixmap = image.toPixmap();
+            try {
+              const data = pixmap.asPNG().slice();
+
+              const prefix = data.slice(0, 32);
+              const key = `${w}x${h}:${Array.from(prefix).map(b => b.toString(16).padStart(2, "0")).join("")}`;
+              if (seen.has(key)) return;
+              seen.add(key);
+
+              images.push({
+                pageIndex,
+                imageIndex: imgIdx++,
+                width: w,
+                height: h,
+                data,
+                mimeType: "image/png",
+                extension: "png",
+              });
+              transferables.push(data.buffer);
+            } finally {
+              pixmap.destroy();
+            }
+          },
+        });
+      } finally {
+        stext.destroy();
+      }
+    } finally {
+      page.destroy();
+    }
+  }
+
+  return { images, transferables };
+}
+
 const api = {
   async openDocument(data: ArrayBuffer): Promise<number> {
     const mupdf = await getMupdf();
@@ -241,56 +661,28 @@ const api = {
 
   /**
    * Extract embedded images from specified pages of a document.
-   * Deduplicates by image dimensions + first 32 bytes of PNG data.
+   *
+   * For PDFs: walks resource dicts directly. Images stored with DCTDecode
+   * (JPEG) or JPXDecode (JPEG 2000) are emitted in their original bytes with
+   * color profiles re-embedded where available; anything else is decoded and
+   * re-encoded to PNG. Dedupes by indirect object number so shared images
+   * aren't extracted repeatedly across pages.
+   *
+   * For non-PDF documents (rare — this app is PDF-first), falls back to the
+   * structured-text walker and emits PNG for every image, deduped by a prefix
+   * hash since no stable object number is available.
+   *
    * Skips tiny images (< 10x10 px) that are likely decorative.
    */
   extractImages(
     handle: number,
     pageIndices: number[]
-  ): { images: { pageIndex: number; imageIndex: number; width: number; height: number; pngData: Uint8Array }[] } {
-    const { doc, mupdf } = getDoc(handle);
-    const seen = new Set<string>();
-    const images: { pageIndex: number; imageIndex: number; width: number; height: number; pngData: Uint8Array }[] = [];
-    const transferables: ArrayBuffer[] = [];
-
-    for (const pageIndex of pageIndices) {
-      const page = doc.loadPage(pageIndex);
-      try {
-        const stext = page.toStructuredText("preserve-images");
-        try {
-          let imgIdx = 0;
-          stext.walk({
-            onImageBlock(_bbox, _transform, image) {
-              const w = image.getWidth();
-              const h = image.getHeight();
-              if (w < 10 || h < 10) return; // skip decorative
-
-              const pixmap = image.toPixmap();
-              try {
-                const pngBytes = pixmap.asPNG();
-                const data = pngBytes.slice();
-
-                // Deduplicate by dimensions + first 32 bytes
-                const prefix = data.slice(0, 32);
-                const key = `${w}x${h}:${Array.from(prefix).map(b => b.toString(16).padStart(2, "0")).join("")}`;
-                if (seen.has(key)) return;
-                seen.add(key);
-
-                images.push({ pageIndex, imageIndex: imgIdx++, width: w, height: h, pngData: data });
-                transferables.push(data.buffer);
-              } finally {
-                pixmap.destroy();
-              }
-            },
-          });
-        } finally {
-          stext.destroy();
-        }
-      } finally {
-        page.destroy();
-      }
-    }
-
+  ): { images: ExtractedImage[] } {
+    const { doc } = getDoc(handle);
+    const pdf = doc.asPDF();
+    const { images, transferables } = pdf
+      ? extractImagesViaRawWalk(pdf, pageIndices)
+      : extractImagesViaStextWalker(doc, pageIndices);
     return Comlink.transfer({ images }, transferables);
   },
 
@@ -332,20 +724,22 @@ const api = {
   },
 
   /**
-   * Extract a single image by index from a page.
+   * Extract a single image by on-page index, matching the ordering used by
+   * getImagePositions (structured-text walker). Always returns PNG — the
+   * index-based API can't correlate back to the raw PDF stream.
    */
   extractSingleImage(
     handle: number,
     pageIndex: number,
     imageIndex: number
-  ): { width: number; height: number; pngData: Uint8Array } | null {
+  ): { width: number; height: number; data: Uint8Array; mimeType: string; extension: string } | null {
     const { doc } = getDoc(handle);
     const page = doc.loadPage(pageIndex);
     try {
       const stext = page.toStructuredText("preserve-images");
       try {
         let imgIdx = 0;
-        let result: { width: number; height: number; pngData: Uint8Array } | null = null;
+        let result: { width: number; height: number; data: Uint8Array; mimeType: string; extension: string } | null = null;
         stext.walk({
           onImageBlock(_bbox, _transform, image) {
             if (result) return; // already found
@@ -358,14 +752,14 @@ const api = {
             try {
               const pngBytes = pixmap.asPNG();
               const data = pngBytes.slice();
-              result = { width: w, height: h, pngData: data };
+              result = { width: w, height: h, data, mimeType: "image/png", extension: "png" };
             } finally {
               pixmap.destroy();
             }
           },
         });
         if (result) {
-          return Comlink.transfer(result, [(result as { pngData: Uint8Array }).pngData.buffer]);
+          return Comlink.transfer(result, [(result as { data: Uint8Array }).data.buffer]);
         }
         return null;
       } finally {
