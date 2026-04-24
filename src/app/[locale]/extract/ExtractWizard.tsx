@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslations } from "next-intl";
 import { ExtractIcon, DownloadIcon } from "@/components/Icons";
 import { DropZone } from "@/components/DropZone";
@@ -11,10 +11,16 @@ import { WizardFile, ExtractedImage } from "@/lib/types";
 import { formatSize } from "@/lib/formatSize";
 import { releaseWizardFile } from "@/lib/releaseWizardFile";
 import { extractImagesFromDocument } from "@/lib/mupdfClient";
-import { downloadImages, downloadSingleImage } from "@/lib/imageExport";
+import {
+  buildExtractedImageFilename,
+  downloadImages,
+  downloadSingleImage,
+  pdfNameStem,
+} from "@/lib/imageExport";
 import { useDropZone } from "@/hooks/useDropZone";
 import { useFileInput } from "@/hooks/useFileInput";
 import { usePdfIngestion } from "@/hooks/usePdfIngestion";
+import { useImagePreviewUrls } from "@/hooks/useImagePreviewUrls";
 
 export function ExtractWizard() {
   const t = useTranslations("extractImagesWizard");
@@ -106,31 +112,16 @@ export function ExtractWizard() {
   const handleDownloadOne = useCallback(
     (img: ExtractedImage) => {
       if (!file) return;
-      const stem = file.name.replace(/\.pdf$/i, "");
       downloadSingleImage(
-        img.pngData,
-        `${stem}_p${img.pageIndex + 1}_img${img.imageIndex + 1}.png`
+        img.data,
+        buildExtractedImageFilename(pdfNameStem(file.name), img),
+        img.mimeType
       );
     },
     [file]
   );
 
-  /* ---- Stable blob URLs for image previews ---- */
-  const previewUrls = useMemo(
-    () =>
-      extractedImages.map((img) =>
-        URL.createObjectURL(
-          new Blob([img.pngData as BlobPart], { type: "image/png" })
-        )
-      ),
-    [extractedImages]
-  );
-
-  useEffect(() => {
-    return () => {
-      previewUrls.forEach((url) => URL.revokeObjectURL(url));
-    };
-  }, [previewUrls]);
+  const previewUrls = useImagePreviewUrls(extractedImages);
 
   return (
     <>
@@ -145,7 +136,7 @@ export function ExtractWizard() {
       />
 
       <WizardContainer
-        icon={<ExtractIcon className="!h-4 !w-4" />}
+        icon={<ExtractIcon className="!h-5 !w-5" />}
         title={t("title")}
         empty={!file}
         footer={extractedImages.length > 0 ? {
@@ -154,6 +145,10 @@ export function ExtractWizard() {
           onButtonClick: handleDownloadAll,
         } : undefined}
       >
+        <p className="mb-4 text-sm leading-relaxed text-muted-foreground">
+          {t("formatNote")}
+        </p>
+
         {!file ? (
           <DropZone
             title={t("dropTitle")}

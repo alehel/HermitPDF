@@ -211,6 +211,7 @@
     "imagesFound": "{count, plural, =1 {1 image found} other {# images found}}",
     "imageAlt": "Image {index} from page {page}",
     "downloadImage": "Download image",
-    "downloadAll": "Download All"
+    "downloadAll": "Download All",
+    "formatNote": "JPEG and JPEG 2000 images are extracted as-is, with color profiles preserved. Other image formats are converted to PNG."
   }
 }
