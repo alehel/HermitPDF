@@ -132,7 +132,7 @@ export function WorkbenchClient() {
   const containerRef = useRef<HTMLDivElement>(null);
   const {
     previewWidth,
-    handleMouseDown,
+    handlePointerDown,
     isResizing,
     previewVisible,
     togglePreview,
@@ -691,7 +691,7 @@ export function WorkbenchClient() {
             />
             {previewVisible && (
               <>
-                <ResizeDivider onMouseDown={handleMouseDown} />
+                <ResizeDivider onPointerDown={handlePointerDown} />
                 <Workspace
                   stacks={stacks}
                   isResizing={isResizing}
