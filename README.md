@@ -58,4 +58,6 @@ This project is being developed with the assistance of an AI coding agent (Claud
 
 ## License
 
-[AGPL-3.0](LICENSE)
+[AGPL-3.0](LICENSE). Third-party attributions are listed in [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md).
+
+The `main` branch of this repository reflects what is currently deployed at [hermitpdf.com](https://hermitpdf.com). This satisfies the AGPL-3.0 §13 requirement to make Corresponding Source available to network users.

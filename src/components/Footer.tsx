@@ -9,7 +9,7 @@ export function Footer() {
 
   return (
     <footer className="border-t border-border px-6 py-6 text-xs text-muted-foreground">
-      <div className="mx-auto flex max-w-2xl items-center justify-between">
+      <div className="mx-auto flex max-w-2xl flex-col gap-4 sm:flex-row sm:items-center sm:justify-between sm:gap-0">
         <div className="flex flex-col">
           <span>
             © {year}{" "}
@@ -23,6 +23,17 @@ export function Footer() {
             </a>
           </span>
           <span>{t("madeIn")}</span>
+          <span>
+            {t("builtWith")}{" "}
+            <a
+              href="https://mupdf.com"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="transition-colors hover:text-foreground"
+            >
+              MuPDF
+            </a>
+          </span>
         </div>
         <a
           href="https://codeberg.org/alehel/hermitpdf"
