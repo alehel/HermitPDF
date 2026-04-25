@@ -152,7 +152,8 @@
     "copyright": "\u00a9 {year}",
     "madeIn": "Made in Norway 🇳🇴, hosted in Europe 🇪🇺",
     "sourceCode": "Source Code",
-    "openSource": "Open Source"
+    "openSource": "Open Source",
+    "builtWith": "Built with"
   },
   "batesWizard": {
     "title": "Bates Numbering",
