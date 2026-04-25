@@ -2,8 +2,6 @@ import { type ReactNode } from "react";
 import { DownloadIcon } from "./Icons";
 import { WizardTitle } from "./WizardTitle";
 
-const MAX_WIDTH = "max-w-xl";
-
 interface WizardFooterProps {
   statusText: ReactNode;
   buttonLabel: string;
@@ -17,6 +15,7 @@ interface WizardContainerProps {
   title: string;
   badge?: ReactNode;
   empty?: boolean;
+  wide?: boolean;
   footer?: WizardFooterProps;
   children: ReactNode;
 }
@@ -26,20 +25,22 @@ export function WizardContainer({
   title,
   badge,
   empty,
+  wide,
   footer,
   children,
 }: WizardContainerProps) {
+  const maxWidth = wide ? "max-w-xl lg:max-w-6xl" : "max-w-xl";
   return (
     <>
       <main className={`flex flex-1 flex-col items-center px-6 ${empty ? "justify-center pb-16" : "py-8"}`}>
-        <div className={`w-full ${MAX_WIDTH}`}>
+        <div className={`w-full ${maxWidth}`}>
           <WizardTitle icon={icon} title={title} badge={badge} />
           {children}
         </div>
       </main>
       {footer && !empty && (
         <footer className="border-t border-border bg-card px-6 py-4">
-          <div className={`mx-auto flex ${MAX_WIDTH} items-center justify-between`}>
+          <div className={`mx-auto flex ${maxWidth} items-center justify-between`}>
             <div className="text-sm text-muted-foreground">{footer.statusText}</div>
             <button
               type="button"
