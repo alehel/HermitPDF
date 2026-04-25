@@ -194,6 +194,7 @@ export function BatesWizard() {
         title={t("title")}
         badge={wizardTitleBadge}
         empty={isEmpty}
+        wide={!isEmpty}
         footer={!isEmpty ? {
           statusText: <><span className="font-medium text-foreground">{totalPages}</span>{" "}{t("pagesTotal")}</>,
           buttonLabel: isProcessing ? t("processing") : t("applyAndDownload"),
@@ -213,29 +214,32 @@ export function BatesWizard() {
             isDragOver={isDragOver}
           />
         ) : (
-          <>
-            <SortableFileList
-              files={files}
-              dragKey="bates"
-              onRemove={handleRemove}
-              onReorder={handleReorder}
-              onFilesAdded={handleFilesAdded}
-              openFilePicker={openFilePicker}
-              isDragOver={isDragOver}
-              dropZoneHandlers={{
-                onDragOver: handleDropZoneDragOver,
-                onDragLeave: handleDropZoneDragLeave,
-                onDrop: handleDropZoneDrop,
-              }}
-              formatSubtitle={formatSubtitle}
-              labels={{
-                dragToReorder: t("dragToReorder"),
-                addMoreFiles: t("addMoreFiles"),
-              }}
-            />
+          <div className="grid gap-8 lg:grid-cols-2 lg:grid-rows-[auto_auto]">
+            {/* File list — mobile: top; desktop: bottom-left */}
+            <div className="lg:col-start-1 lg:row-start-2">
+              <SortableFileList
+                files={files}
+                dragKey="bates"
+                onRemove={handleRemove}
+                onReorder={handleReorder}
+                onFilesAdded={handleFilesAdded}
+                openFilePicker={openFilePicker}
+                isDragOver={isDragOver}
+                dropZoneHandlers={{
+                  onDragOver: handleDropZoneDragOver,
+                  onDragLeave: handleDropZoneDragLeave,
+                  onDrop: handleDropZoneDrop,
+                }}
+                formatSubtitle={formatSubtitle}
+                labels={{
+                  dragToReorder: t("dragToReorder"),
+                  addMoreFiles: t("addMoreFiles"),
+                }}
+              />
+            </div>
 
-            {/* Configuration */}
-            <div className="mt-8">
+            {/* Configuration — mobile: middle; desktop: top-left */}
+            <div className="lg:col-start-1 lg:row-start-1">
               <h3 className="mb-4 text-xs font-medium uppercase tracking-widest text-muted-foreground">
                 {t("configuration")}
               </h3>
@@ -357,8 +361,8 @@ export function BatesWizard() {
               </div>
             </div>
 
-            {/* Preview */}
-            <div className="mt-8">
+            {/* Preview — mobile: bottom; desktop: right column, sticky */}
+            <div className="lg:col-start-2 lg:row-start-1 lg:row-span-2 lg:self-start lg:sticky lg:top-8">
               <h3 className="mb-4 text-xs font-medium uppercase tracking-widest text-muted-foreground">
                 {t("preview")}
               </h3>
@@ -406,7 +410,7 @@ export function BatesWizard() {
                 )}
               </div>
             </div>
-          </>
+          </div>
         )}
       </WizardContainer>
     </>
