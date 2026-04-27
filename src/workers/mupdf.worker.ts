@@ -28,6 +28,14 @@ type BatesStampWorkerConfig = {
   shrink: boolean;
 };
 
+type CompressWorkerConfig = {
+  recompressImages: boolean;
+  imageQuality: number;
+  subsetFonts: boolean;
+  deduplicateObjects: boolean;
+  sanitizeStreams: boolean;
+};
+
 // Aliases for MuPDF runtime instance types so signatures stay readable.
 type MupdfDocument = InstanceType<(typeof import("mupdf"))["Document"]>;
 type MupdfPDFDocument = InstanceType<(typeof import("mupdf"))["PDFDocument"]>;
@@ -590,6 +598,158 @@ function extractImagesViaStextWalker(
   return { images, transferables };
 }
 
+/**
+ * Re-encode an Image XObject as JPEG at the given quality and overwrite its
+ * stream + dict in place. Skips images that aren't safe to re-encode this way:
+ * tiny images, image masks, and images with separate masks/SMasks (alpha or
+ * stencil compositing) — those need bytes-identical layout to keep the page
+ * looking right.
+ *
+ * Done in-place rather than via addImage() so we don't have to walk every
+ * resource dict to swap references; the original indirect ref keeps pointing
+ * to the same object, just with new contents.
+ */
+function recompressImageXObject(
+  mupdf: typeof import("mupdf"),
+  pdf: MupdfPDFDocument,
+  xobj: MupdfPDFObject,
+  seen: Set<number>,
+  quality: number
+): void {
+  const objNum = xobj.isIndirect() ? xobj.asIndirect() : 0;
+  if (objNum > 0) {
+    if (seen.has(objNum)) return;
+    seen.add(objNum);
+  }
+
+  const widthObj = xobj.get("Width");
+  const heightObj = xobj.get("Height");
+  if (!widthObj.isNumber() || !heightObj.isNumber()) return;
+  const w = widthObj.asNumber();
+  const h = heightObj.asNumber();
+  // Skip thumbnails and decorative bits — re-encoding them costs more than
+  // the savings, and the artifacts are more visible at small sizes.
+  if (w < 100 || h < 100) return;
+
+  // ImageMasks are 1-bit stencils; recompressing as JPEG would silently
+  // produce an opaque rectangle. Mask/SMask images participate in alpha or
+  // stencil compositing with another image; we can't safely replace just one
+  // half of the pair without recompressing both in lockstep.
+  const imageMaskObj = xobj.get("ImageMask");
+  if (imageMaskObj.isBoolean() && imageMaskObj.asBoolean()) return;
+  if (!xobj.get("SMask").isNull()) return;
+  if (!xobj.get("Mask").isNull()) return;
+
+  let image: InstanceType<typeof mupdf.Image> | null = null;
+  try {
+    image = pdf.loadImage(xobj);
+  } catch {
+    return;
+  }
+
+  try {
+    const pixmap = image.toPixmap();
+    let pixmapForJpeg = pixmap;
+    let createdRgbCopy = false;
+    try {
+      // JPEG can't carry an alpha channel, and CMYK JPEGs need a separate
+      // path with invert_cmyk. Convert anything that isn't 1- or 3-component
+      // RGB/Gray-without-alpha to plain RGB before encoding.
+      const numComponents = pixmap.getNumberOfComponents();
+      const hasAlpha = pixmap.getAlpha() > 0;
+      if (hasAlpha || numComponents > 3) {
+        pixmapForJpeg = pixmap.convertToColorSpace(mupdf.ColorSpace.DeviceRGB, false);
+        createdRgbCopy = true;
+      }
+
+      const finalComponents = pixmapForJpeg.getNumberOfComponents();
+      const outputColorSpace = finalComponents === 1 ? "DeviceGray" : "DeviceRGB";
+
+      const jpegBytes = pixmapForJpeg.asJPEG(quality).slice();
+
+      // Replace the dict entries that describe the encoding so they match the
+      // new JPEG bytes. Drop entries that would conflict with DCTDecode.
+      xobj.put("Filter", pdf.newName("DCTDecode"));
+      xobj.put("ColorSpace", pdf.newName(outputColorSpace));
+      xobj.put("BitsPerComponent", pdf.newInteger(8));
+      xobj.put("Width", pdf.newInteger(pixmapForJpeg.getWidth()));
+      xobj.put("Height", pdf.newInteger(pixmapForJpeg.getHeight()));
+      xobj.delete("DecodeParms");
+      xobj.delete("Decode");
+
+      // writeRawStream keeps the bytes as-is (no flate wrap) — DCTDecode
+      // images carry their compression in the JPEG container itself.
+      xobj.writeRawStream(jpegBytes);
+    } finally {
+      if (createdRgbCopy) pixmapForJpeg.destroy();
+      pixmap.destroy();
+    }
+  } catch {
+    // Anything we can't recompress (unusual color spaces, decode failures)
+    // is left alone — the original encoding still works.
+  } finally {
+    image.destroy();
+  }
+}
+
+/**
+ * Walk a Resources dict recursively, recompressing every Image XObject we
+ * encounter and descending into Form XObjects so nested images aren't missed.
+ * Dedupes by indirect object number so a shared image is only recompressed
+ * once even when it appears on multiple pages.
+ */
+function walkResourcesForRecompression(
+  mupdf: typeof import("mupdf"),
+  pdf: MupdfPDFDocument,
+  resources: MupdfPDFObject,
+  seen: Set<number>,
+  quality: number
+): void {
+  if (resources.isNull()) return;
+  const xobjs = resources.get("XObject");
+  if (xobjs.isNull() || !xobjs.isDictionary()) return;
+
+  xobjs.forEach((val) => {
+    const subtype = val.get("Subtype");
+    if (!subtype.isName()) return;
+    const subtypeName = subtype.asName();
+    if (subtypeName === "Image") {
+      recompressImageXObject(mupdf, pdf, val, seen, quality);
+    } else if (subtypeName === "Form") {
+      walkResourcesForRecompression(mupdf, pdf, val.get("Resources"), seen, quality);
+    }
+  });
+}
+
+/**
+ * Recompress every Image XObject reachable from the document's pages.
+ * Modifies the PDFDocument in place.
+ */
+function recompressAllImages(
+  mupdf: typeof import("mupdf"),
+  pdf: MupdfPDFDocument,
+  quality: number
+): void {
+  const seen = new Set<number>();
+  const pageCount = pdf.countPages();
+  for (let i = 0; i < pageCount; i++) {
+    const pageObj = pdf.findPage(i);
+    const resources = pageObj.getInheritable("Resources");
+    walkResourcesForRecompression(mupdf, pdf, resources, seen, quality);
+  }
+}
+
+/** Shared saveToBuffer options for compression-targeted writes. */
+function buildCompressSaveOptions(config: CompressWorkerConfig): Record<string, unknown> {
+  return {
+    compress: true,
+    "compress-images": true,
+    "compress-fonts": true,
+    garbage: config.deduplicateObjects ? "deduplicate" : "yes",
+    sanitize: config.sanitizeStreams,
+  };
+}
+
 const api = {
   async openDocument(data: ArrayBuffer): Promise<number> {
     const mupdf = await getMupdf();
@@ -1119,6 +1279,109 @@ const api = {
       const bytes = buf.asUint8Array().slice();
       buf.destroy();
       return Comlink.transfer(bytes, [bytes.buffer]);
+    } finally {
+      output.destroy();
+    }
+  },
+
+  /**
+   * Re-save the document with compression options applied. Optionally
+   * recompresses embedded images as JPEG at the configured quality before the
+   * final save.
+   *
+   * The original (cached) document handle isn't mutated — pages are grafted
+   * into a fresh PDFDocument so image rewrites and metadata changes don't
+   * affect other tools that share the same handle via the LRU cache.
+   */
+  async compressPdf(
+    handle: number,
+    config: CompressWorkerConfig
+  ): Promise<Uint8Array> {
+    const { doc: sourceDoc, mupdf } = getDoc(handle);
+    const sourcePdf = sourceDoc.asPDF();
+    if (!sourcePdf) throw new Error("Document is not a PDF");
+
+    const output = new mupdf.PDFDocument();
+    try {
+      output.setMetaData("info:Creator", "hermitpdf.eu");
+      output.setMetaData("info:Producer", "hermitpdf.eu");
+
+      const pageCount = sourceDoc.countPages();
+      for (let i = 0; i < pageCount; i++) {
+        output.graftPage(i, sourcePdf, i);
+      }
+
+      if (config.recompressImages) {
+        recompressAllImages(mupdf, output, config.imageQuality);
+      }
+
+      if (config.subsetFonts) {
+        try {
+          output.subsetFonts();
+        } catch {
+          // subsetFonts can fail on unusual fonts; not fatal — fall through
+          // and save with whatever fonts are present.
+        }
+      }
+
+      const buf = output.saveToBuffer(buildCompressSaveOptions(config));
+      const bytes = buf.asUint8Array().slice();
+      buf.destroy();
+      return Comlink.transfer(bytes, [bytes.buffer]);
+    } finally {
+      output.destroy();
+    }
+  },
+
+  /**
+   * Render a single page as it would appear after compression, so the user
+   * can judge image quality before committing to the full export. Mirrors the
+   * compressPdf flow but only on the requested page, then renders it to a
+   * pixmap and discards the temporary document.
+   */
+  async renderCompressedPreview(
+    handle: number,
+    pageIndex: number,
+    config: CompressWorkerConfig,
+    dpi: number
+  ): Promise<ImageData> {
+    const { doc: sourceDoc, mupdf } = getDoc(handle);
+    const sourcePdf = sourceDoc.asPDF();
+    if (!sourcePdf) throw new Error("Document is not a PDF");
+
+    const output = new mupdf.PDFDocument();
+    try {
+      output.graftPage(0, sourcePdf, pageIndex);
+
+      if (config.recompressImages) {
+        recompressAllImages(mupdf, output, config.imageQuality);
+      }
+
+      const { matrix, normalizedBbox } = buildPageMatrix(mupdf, output, 0, dpi, 0);
+      const page = output.loadPage(0);
+      try {
+        const pixmap = new mupdf.Pixmap(mupdf.ColorSpace.DeviceRGB, normalizedBbox, true);
+        try {
+          pixmap.clear(255);
+          const device = new mupdf.DrawDevice(matrix, pixmap);
+          try {
+            page.run(device, mupdf.Matrix.identity);
+            device.close();
+          } finally {
+            device.destroy();
+          }
+          const imageData = new ImageData(
+            pixmap.getPixels().slice(),
+            pixmap.getWidth(),
+            pixmap.getHeight()
+          );
+          return Comlink.transfer(imageData, [imageData.data.buffer]);
+        } finally {
+          pixmap.destroy();
+        }
+      } finally {
+        page.destroy();
+      }
     } finally {
       output.destroy();
     }
