@@ -173,6 +173,15 @@ export async function renderBatesPreview(
   return getWorker().renderBatesPreview(handle, pageIndex, config, dpi);
 }
 
+/** Encrypt a PDF with a password (used for both user and owner password). */
+export async function encryptPdf(
+  docId: string,
+  password: string
+): Promise<Uint8Array> {
+  const handle = await ensureLoaded(docId);
+  return getWorker().encryptPdf(handle, password);
+}
+
 /** Merge pages into a single PDF using document handles for resource deduplication. */
 export async function mergePdfs(
   pageRefs: PageRef[],

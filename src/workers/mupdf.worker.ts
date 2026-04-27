@@ -1012,6 +1012,29 @@ const api = {
   },
 
   /**
+   * Encrypt the open document with the given password (used for both user
+   * and owner password). AES-256 is the strongest cipher MuPDF supports and
+   * is widely compatible with PDF 2.0 readers.
+   *
+   * The original document handle is not mutated — saveToBuffer writes a copy
+   * with the requested encryption applied. Original metadata is preserved.
+   */
+  encryptPdf(handle: number, password: string): Uint8Array {
+    const { doc } = getDoc(handle);
+    const pdf = doc.asPDF();
+    if (!pdf) throw new Error("Document is not a PDF");
+    const buf = pdf.saveToBuffer({
+      encrypt: "aes-256",
+      "user-password": password,
+      "owner-password": password,
+      compress: true,
+    });
+    const bytes = buf.asUint8Array().slice();
+    buf.destroy();
+    return Comlink.transfer(bytes, [bytes.buffer]);
+  },
+
+  /**
    * Merge pages from already-open document handles into a single PDF.
    * Pages from the same source document share resources (fonts, images)
    * automatically via MuPDF's graft deduplication.
