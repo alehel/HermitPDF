@@ -66,6 +66,14 @@ export interface BatesConfig {
   shrink: boolean;
 }
 
+export interface CompressConfig {
+  recompressImages: boolean;
+  imageQuality: number;
+  subsetFonts: boolean;
+  deduplicateObjects: boolean;
+  sanitizeStreams: boolean;
+}
+
 export function formatFileSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;

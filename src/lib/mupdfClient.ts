@@ -1,7 +1,7 @@
 import * as Comlink from "comlink";
 import type { MupdfWorkerApi } from "@/workers/mupdf.worker";
 import { retrieveDoc } from "./pdfStore";
-import type { PageRef, PdfMetadata, ExtractedImage, ImagePosition, BatesConfig } from "./types";
+import type { PageRef, PdfMetadata, ExtractedImage, ImagePosition, BatesConfig, CompressConfig } from "./types";
 
 let worker: Comlink.Remote<MupdfWorkerApi> | null = null;
 
@@ -171,6 +171,26 @@ export async function renderBatesPreview(
 ): Promise<ImageData> {
   const handle = await ensureLoaded(docId);
   return getWorker().renderBatesPreview(handle, pageIndex, config, dpi);
+}
+
+/** Compress a PDF — recompresses images as JPEG and re-saves with garbage collection / sanitization. */
+export async function compressPdf(
+  docId: string,
+  config: CompressConfig
+): Promise<Uint8Array> {
+  const handle = await ensureLoaded(docId);
+  return getWorker().compressPdf(handle, config);
+}
+
+/** Render a single page as it would appear after compression, for preview. */
+export async function renderCompressedPreview(
+  docId: string,
+  pageIndex: number,
+  config: CompressConfig,
+  dpi: number = 144
+): Promise<ImageData> {
+  const handle = await ensureLoaded(docId);
+  return getWorker().renderCompressedPreview(handle, pageIndex, config, dpi);
 }
 
 /** Encrypt a PDF with a password (used for both user and owner password). */
