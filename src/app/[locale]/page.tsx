@@ -10,6 +10,7 @@ import {
   BatesIcon,
   RotateIcon,
   LockIcon,
+  UnlockIcon,
   WorkbenchIcon,
   ArrowRightIcon,
 } from "@/components/Icons";
@@ -71,6 +72,7 @@ export default async function Home({
           <QuickActionCard href="/extract" icon={<ExtractIcon />} title={t("extractImages")} description={t("extractImagesDesc")} />
           <QuickActionCard href="/bates" icon={<BatesIcon />} title={t("bates")} description={t("batesDesc")} />
           <QuickActionCard href="/protect" icon={<LockIcon />} title={t("protect")} description={t("protectDesc")} />
+          <QuickActionCard href="/unlock" icon={<UnlockIcon />} title={t("unlock")} description={t("unlockDesc")} />
         </div>
 
         {/* Divider */}

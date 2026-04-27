@@ -182,6 +182,27 @@ export async function encryptPdf(
   return getWorker().encryptPdf(handle, password);
 }
 
+/** Whether the document needs a password to read its pages. */
+export async function needsPassword(docId: string): Promise<boolean> {
+  const handle = await ensureLoaded(docId);
+  return getWorker().needsPassword(handle);
+}
+
+/** Authenticate the document with a password. Returns true on success. */
+export async function authenticatePassword(
+  docId: string,
+  password: string
+): Promise<boolean> {
+  const handle = await ensureLoaded(docId);
+  return getWorker().authenticatePassword(handle, password);
+}
+
+/** Save the document with encryption removed. Document must be authenticated first. */
+export async function decryptPdf(docId: string): Promise<Uint8Array> {
+  const handle = await ensureLoaded(docId);
+  return getWorker().decryptPdf(handle);
+}
+
 /** Merge pages into a single PDF using document handles for resource deduplication. */
 export async function mergePdfs(
   pageRefs: PageRef[],

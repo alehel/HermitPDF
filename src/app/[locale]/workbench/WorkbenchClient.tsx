@@ -220,7 +220,8 @@ export function WorkbenchClient() {
         pdfFiles.map(async (f) => {
           try {
             const data = await f.arrayBuffer();
-            return await ingestDocument(data, f.name, f.size);
+            const result = await ingestDocument(data, f.name, f.size);
+            return result.stack;
           } catch (err: unknown) {
             const msg =
               err instanceof Error ? err.message.toLowerCase() : "";

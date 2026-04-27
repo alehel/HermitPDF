@@ -1012,6 +1012,48 @@ const api = {
   },
 
   /**
+   * Whether the open document is encrypted and requires a password before
+   * pages can be read or saved unencrypted. Returns false for non-encrypted
+   * PDFs as well as for documents already authenticated in this session.
+   */
+  needsPassword(handle: number): boolean {
+    const { doc } = getDoc(handle);
+    return doc.needsPassword();
+  },
+
+  /**
+   * Authenticate the open document with the given password. Returns true
+   * when the password unlocks the document for reading; false when the
+   * password is incorrect. Once authenticated, the document handle can be
+   * used like any other for page reads and unencrypted saves.
+   */
+  authenticatePassword(handle: number, password: string): boolean {
+    const { doc } = getDoc(handle);
+    // MuPDF returns 0 on failure, non-zero on success (with bits indicating
+    // user vs. owner authentication). We collapse that to a simple boolean.
+    return doc.authenticatePassword(password) !== 0;
+  },
+
+  /**
+   * Save the open document with encryption stripped. Caller must have
+   * authenticated the document first (via authenticatePassword); MuPDF
+   * refuses to write pages from an unauthenticated encrypted document.
+   */
+  decryptPdf(handle: number): Uint8Array {
+    const { doc } = getDoc(handle);
+    const pdf = doc.asPDF();
+    if (!pdf) throw new Error("Document is not a PDF");
+    const buf = pdf.saveToBuffer({
+      encrypt: "none",
+      compress: true,
+      garbage: true,
+    });
+    const bytes = buf.asUint8Array().slice();
+    buf.destroy();
+    return Comlink.transfer(bytes, [bytes.buffer]);
+  },
+
+  /**
    * Encrypt the open document with the given password (used for both user
    * and owner password). AES-256 is the strongest cipher MuPDF supports and
    * is widely compatible with PDF 2.0 readers.

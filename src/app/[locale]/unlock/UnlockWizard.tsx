@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslations } from "next-intl";
-import { LockIcon, EyeIcon, EyeOffIcon } from "@/components/Icons";
+import { UnlockIcon, EyeIcon, EyeOffIcon } from "@/components/Icons";
 import { DropZone } from "@/components/DropZone";
 import { WizardBanners } from "@/components/WizardBanners";
 import { WizardContainer } from "@/components/WizardContainer";
@@ -10,23 +10,25 @@ import { FileCard } from "@/components/FileCard";
 import { WizardFile } from "@/lib/types";
 import { formatSize } from "@/lib/formatSize";
 import { releaseWizardFile } from "@/lib/releaseWizardFile";
-import { encryptPdf } from "@/lib/mupdfClient";
+import { authenticatePassword, decryptPdf, getPageCount } from "@/lib/mupdfClient";
 import { downloadPdf } from "@/lib/pdfExport";
 import { useDropZone } from "@/hooks/useDropZone";
 import { useFileInput } from "@/hooks/useFileInput";
 import { usePdfIngestion } from "@/hooks/usePdfIngestion";
 
-function protectedStem(name: string): string {
-  return name.replace(/\.pdf$/i, "") + "_protected.pdf";
+function unlockedStem(name: string): string {
+  return name.replace(/\.pdf$/i, "") + "_unlocked.pdf";
 }
 
-export function ProtectWizard() {
-  const t = useTranslations("protectWizard");
+export function UnlockWizard() {
+  const t = useTranslations("unlockWizard");
 
   const [file, setFile] = useState<WizardFile | null>(null);
   const [password, setPassword] = useState("");
-  const [confirm, setConfirm] = useState("");
   const [showPassword, setShowPassword] = useState(false);
+  const [authError, setAuthError] = useState(false);
+  const [isAuthenticating, setIsAuthenticating] = useState(false);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
 
   const fileRef = useRef(file);
@@ -38,7 +40,7 @@ export function ProtectWizard() {
     setRejectedFiles,
     passwordProtectedFiles,
     setPasswordProtectedFiles,
-  } = usePdfIngestion();
+  } = usePdfIngestion({ allowProtected: true });
 
   const handleFilesAdded = useCallback(
     async (fileList: FileList) => {
@@ -50,6 +52,9 @@ export function ProtectWizard() {
         if (prev) releaseWizardFile(prev);
         return newFile;
       });
+      setPassword("");
+      setAuthError(false);
+      setIsAuthenticated(false);
 
       if (pdfCount > 1) {
         setRejectedFiles([t("onlyOneFile")]);
@@ -74,28 +79,66 @@ export function ProtectWizard() {
       return null;
     });
     setPassword("");
-    setConfirm("");
+    setAuthError(false);
+    setIsAuthenticated(false);
   }, []);
 
-  const passwordsMatch = password.length > 0 && password === confirm;
-  const showMismatch = confirm.length > 0 && password !== confirm;
+  const handleAuthenticate = useCallback(async () => {
+    if (!file || !file.needsPassword || !password) return;
+    setIsAuthenticating(true);
+    setAuthError(false);
+    try {
+      const ok = await authenticatePassword(file.sourceDocId, password);
+      if (!ok) {
+        setAuthError(true);
+        return;
+      }
+      // Re-fetch the page count now that the document is readable
+      const count = await getPageCount(file.sourceDocId);
+      setFile((prev) =>
+        prev
+          ? {
+              ...prev,
+              pageCount: count,
+            }
+          : prev
+      );
+      setIsAuthenticated(true);
+    } finally {
+      setIsAuthenticating(false);
+    }
+  }, [file, password]);
 
   const handleExport = useCallback(async () => {
-    if (!file || !passwordsMatch) return;
+    if (!file || !isAuthenticated) return;
     setIsExporting(true);
     try {
-      const data = await encryptPdf(file.sourceDocId, password);
-      downloadPdf(data, protectedStem(file.name));
+      const data = await decryptPdf(file.sourceDocId);
+      downloadPdf(data, unlockedStem(file.name));
     } finally {
       setIsExporting(false);
     }
-  }, [file, password, passwordsMatch]);
+  }, [file, isAuthenticated]);
 
-  const statusText = !password
-    ? t("statusEnterPassword")
-    : showMismatch
-      ? t("statusMismatch")
-      : t("statusReady");
+  const isUnprotected = !!file && !file.needsPassword;
+
+  const footerProps = !file
+    ? undefined
+    : isUnprotected
+      ? undefined
+      : isAuthenticated
+        ? {
+            statusText: t("statusReady"),
+            buttonLabel: isExporting ? t("unlocking") : t("downloadUnlocked"),
+            onButtonClick: handleExport,
+            disabled: isExporting,
+          }
+        : {
+            statusText: authError ? t("statusWrongPassword") : t("statusEnterPassword"),
+            buttonLabel: isAuthenticating ? t("checking") : t("unlock"),
+            onButtonClick: handleAuthenticate,
+            disabled: !password || isAuthenticating,
+          };
 
   return (
     <>
@@ -110,15 +153,10 @@ export function ProtectWizard() {
       />
 
       <WizardContainer
-        icon={<LockIcon className="!h-5 !w-5" />}
+        icon={<UnlockIcon className="!h-5 !w-5" />}
         title={t("title")}
         empty={!file}
-        footer={file ? {
-          statusText,
-          buttonLabel: isExporting ? t("protecting") : t("protectAndDownload"),
-          onButtonClick: handleExport,
-          disabled: isExporting || !passwordsMatch,
-        } : undefined}
+        footer={footerProps}
       >
         {!file ? (
           <DropZone
@@ -135,25 +173,51 @@ export function ProtectWizard() {
           <>
             <FileCard
               name={file.name}
-              subtitle={`${t("pageCount", { count: file.pageCount })} \u00b7 ${formatSize(file.fileSize)}`}
+              subtitle={
+                isAuthenticated
+                  ? `${t("pageCount", { count: file.pageCount })} \u00b7 ${formatSize(file.fileSize)}`
+                  : isUnprotected
+                    ? `${t("pageCount", { count: file.pageCount })} \u00b7 ${formatSize(file.fileSize)}`
+                    : `${t("encrypted")} \u00b7 ${formatSize(file.fileSize)}`
+              }
               onRemove={handleRemove}
               removeTitle={t("remove")}
             />
 
-            <div className="mt-6 space-y-4">
-              <div>
-                <label htmlFor="protect-password" className="mb-1.5 block text-sm font-medium text-foreground">
+            {isUnprotected ? (
+              <div className="mt-6 rounded-xl border border-border bg-card p-4 text-sm text-muted-foreground">
+                {t("notEncrypted")}
+              </div>
+            ) : isAuthenticated ? (
+              <div className="mt-6 rounded-xl border border-border bg-card p-4 text-sm text-foreground">
+                {t("authenticatedNote")}
+              </div>
+            ) : (
+              <div className="mt-6">
+                <label htmlFor="unlock-password" className="mb-1.5 block text-sm font-medium text-foreground">
                   {t("passwordLabel")}
                 </label>
                 <div className="relative">
                   <input
-                    id="protect-password"
+                    id="unlock-password"
                     type={showPassword ? "text" : "password"}
                     value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    autoComplete="new-password"
-                    className="w-full rounded-xl border border-border bg-card px-4 py-2.5 pr-10 text-sm text-foreground outline-none focus:border-primary"
+                    onChange={(e) => {
+                      setPassword(e.target.value);
+                      if (authError) setAuthError(false);
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && password && !isAuthenticating) {
+                        e.preventDefault();
+                        handleAuthenticate();
+                      }
+                    }}
+                    autoComplete="current-password"
+                    className={`w-full rounded-xl border bg-card px-4 py-2.5 pr-10 text-sm text-foreground outline-none ${
+                      authError ? "border-red-500 focus:border-red-500" : "border-border focus:border-primary"
+                    }`}
                     placeholder={t("passwordPlaceholder")}
+                    autoFocus
                   />
                   <button
                     type="button"
@@ -165,29 +229,11 @@ export function ProtectWizard() {
                     {showPassword ? <EyeOffIcon /> : <EyeIcon />}
                   </button>
                 </div>
-              </div>
-
-              <div>
-                <label htmlFor="protect-confirm" className="mb-1.5 block text-sm font-medium text-foreground">
-                  {t("confirmLabel")}
-                </label>
-                <input
-                  id="protect-confirm"
-                  type={showPassword ? "text" : "password"}
-                  value={confirm}
-                  onChange={(e) => setConfirm(e.target.value)}
-                  autoComplete="new-password"
-                  className={`w-full rounded-xl border bg-card px-4 py-2.5 text-sm text-foreground outline-none ${
-                    showMismatch ? "border-red-500 focus:border-red-500" : "border-border focus:border-primary"
-                  }`}
-                />
-                {showMismatch && (
-                  <p className="mt-1.5 text-xs text-red-500">{t("mismatch")}</p>
+                {authError && (
+                  <p className="mt-1.5 text-xs text-red-500">{t("wrongPassword")}</p>
                 )}
               </div>
-
-              <p className="text-xs text-muted-foreground">{t("encryptionNote")}</p>
-            </div>
+            )}
           </>
         )}
       </WizardContainer>
