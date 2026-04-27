@@ -57,9 +57,12 @@ export default async function Home({
         </div>
 
         {/* Quick actions */}
-        <p className="mb-4 text-xs font-medium uppercase tracking-widest text-muted-foreground">
-          {t("quickActions")}
-        </p>
+        <div className="mb-4 text-center">
+          <p className="text-xs font-medium uppercase tracking-widest text-muted-foreground">
+            {t("quickActions")}
+          </p>
+          <p className="mt-1 text-sm text-muted-foreground">{t("quickActionsHint")}</p>
+        </div>
         <div className="mb-10 grid w-full max-w-2xl grid-cols-2 gap-3 sm:grid-cols-4">
           <QuickActionCard href="/merge" icon={<MergeIcon />} title={t("merge")} description={t("mergeDesc")} />
           <QuickActionCard href="/split" icon={<ScissorsIcon />} title={t("split")} description={t("splitDesc")} />
@@ -76,6 +79,7 @@ export default async function Home({
         </div>
 
         {/* Workbench CTA */}
+        <p className="mb-4 text-sm text-muted-foreground">{t("workbenchHint")}</p>
         <Link
           href="/workbench"
           className="group flex w-full max-w-2xl items-center gap-6 rounded-2xl bg-sidebar p-6 text-left transition-all hover:shadow-xl"
@@ -85,7 +89,7 @@ export default async function Home({
           </div>
           <div className="flex-1">
             <h2 className="text-lg font-medium text-white">
-              {t("openWorkbench")}
+              {t("workbench")}
             </h2>
             <p className="mt-1 text-sm text-white/50">{t("workbenchDesc")}</p>
           </div>

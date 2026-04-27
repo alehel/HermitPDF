@@ -89,6 +89,9 @@
     "welcome": "Welcome to HermitPDF",
     "tagline": "Privacy-first PDF toolkit. Everything runs in your browser.",
     "quickActions": "Quick Actions",
+    "quickActionsHint": "Great for quick edits and mobile.",
+    "workbench": "Workbench",
+    "workbenchHint": "Designed for desktop only.",
     "merge": "Merge",
     "mergeDesc": "Combine files",
     "split": "Split",
@@ -100,7 +103,6 @@
     "bates": "Bates Number",
     "batesDesc": "Stamp pages",
     "or": "or",
-    "openWorkbench": "Open Workbench",
     "workbenchDesc": "Full editor with drag-and-drop page management, reordering, rotation, and multi-file export.",
     "toggleTheme": "Toggle theme"
   },
