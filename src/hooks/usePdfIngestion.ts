@@ -56,15 +56,16 @@ export function usePdfIngestion(hookOptions?: UsePdfIngestionOptions) {
             const result = await ingestDocument(data, f.name, f.size, {
               allowProtected,
             });
-            return {
+            const wizardFile: WizardFile = {
               id: crypto.randomUUID(),
               stack: result.stack,
               name: f.name,
               pageCount: result.stack.pages.length,
               fileSize: f.size,
               sourceDocId: result.sourceDocId,
-              needsPassword: result.needsPassword || undefined,
-            } satisfies WizardFile;
+              needsPassword: result.needsPassword,
+            };
+            return wizardFile;
           } catch (err) {
             const msg = err instanceof Error ? err.message.toLowerCase() : "";
             if (msg.includes("password") || msg.includes("encrypted")) {
