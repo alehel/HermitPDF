@@ -63,7 +63,7 @@ export default async function Home({
           <p className="text-xs font-medium uppercase tracking-widest text-muted-foreground">
             {t("quickActions")}
           </p>
-          <p className="mt-1 text-sm text-muted-foreground">{t("quickActionsHint")}</p>
+          <p className="mt-1 hidden text-sm text-muted-foreground sm:block">{t("quickActionsHint")}</p>
         </div>
         <div className="mb-10 grid w-full max-w-2xl grid-cols-2 gap-3 sm:grid-cols-4">
           <QuickActionCard href="/merge" icon={<MergeIcon />} title={t("merge")} description={t("mergeDesc")} />
@@ -76,17 +76,17 @@ export default async function Home({
         </div>
 
         {/* Divider */}
-        <div className="mb-10 flex w-full max-w-2xl items-center gap-4">
+        <div className="mb-10 hidden w-full max-w-2xl items-center gap-4 sm:flex">
           <div className="h-px flex-1 bg-border" />
           <span className="text-xs text-muted-foreground">{t("or")}</span>
           <div className="h-px flex-1 bg-border" />
         </div>
 
         {/* Workbench CTA */}
-        <p className="mb-4 text-sm text-muted-foreground">{t("workbenchHint")}</p>
+        <p className="mb-4 hidden text-sm text-muted-foreground sm:block">{t("workbenchHint")}</p>
         <Link
           href="/workbench"
-          className="group flex w-full max-w-2xl items-center gap-6 rounded-2xl bg-sidebar p-6 text-left transition-all hover:shadow-xl"
+          className="group hidden w-full max-w-2xl items-center gap-6 rounded-2xl bg-sidebar p-6 text-left transition-all hover:shadow-xl sm:flex"
         >
           <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-xl bg-primary text-white">
             <WorkbenchIcon />
