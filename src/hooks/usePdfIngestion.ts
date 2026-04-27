@@ -9,11 +9,20 @@ interface IngestResult {
   pdfCount: number;
 }
 
-export function usePdfIngestion() {
+interface UsePdfIngestionOptions {
+  // When true, password-protected PDFs are accepted with `needsPassword: true`
+  // on the resulting WizardFile instead of being rejected. The caller is
+  // responsible for prompting for the password and authenticating the doc.
+  allowProtected?: boolean;
+}
+
+export function usePdfIngestion(hookOptions?: UsePdfIngestionOptions) {
   const [rejectedFiles, setRejectedFiles] = useState<string[]>([]);
   const [passwordProtectedFiles, setPasswordProtectedFiles] = useState<
     string[]
   >([]);
+
+  const allowProtected = hookOptions?.allowProtected ?? false;
 
   const ingestFiles = useCallback(
     async (
@@ -44,13 +53,17 @@ export function usePdfIngestion() {
         toProcess.map(async (f) => {
           try {
             const data = await f.arrayBuffer();
-            const stack = await ingestDocument(data, f.name, f.size);
+            const result = await ingestDocument(data, f.name, f.size, {
+              allowProtected,
+            });
             return {
               id: crypto.randomUUID(),
-              stack,
+              stack: result.stack,
               name: f.name,
-              pageCount: stack.pages.length,
+              pageCount: result.stack.pages.length,
               fileSize: f.size,
+              sourceDocId: result.sourceDocId,
+              needsPassword: result.needsPassword || undefined,
             } satisfies WizardFile;
           } catch (err) {
             const msg = err instanceof Error ? err.message.toLowerCase() : "";
@@ -71,7 +84,7 @@ export function usePdfIngestion() {
 
       return { files, pdfCount: pdfFiles.length };
     },
-    []
+    [allowProtected]
   );
 
   return {

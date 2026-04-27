@@ -35,6 +35,10 @@ export interface WizardFile {
   name: string;
   pageCount: number;
   fileSize: number;
+  sourceDocId: string;
+  // Set when the file was ingested with allowProtected and is encrypted —
+  // the stack has no pages until the wizard authenticates the document.
+  needsPassword?: boolean;
 }
 
 export interface ImagePosition {

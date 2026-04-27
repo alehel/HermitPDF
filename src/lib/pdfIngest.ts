@@ -1,6 +1,12 @@
 import { PageStack, PageRef } from "./types";
 import { storeDoc } from "./pdfStore";
-import { getPageCount, loadDocument } from "./mupdfClient";
+import { getPageCount, loadDocument, needsPassword } from "./mupdfClient";
+
+export interface IngestResult {
+  stack: PageStack;
+  sourceDocId: string;
+  needsPassword: boolean;
+}
 
 /**
  * Ingest a raw PDF: store the original bytes once and build a PageStack
@@ -8,17 +14,35 @@ import { getPageCount, loadDocument } from "./mupdfClient";
  *
  * No splitting occurs — the original document is kept intact so that
  * shared resources (fonts, images) are preserved for export.
+ *
+ * With `allowProtected`, password-protected PDFs are returned with an empty
+ * page stack and `needsPassword: true` instead of throwing — the caller is
+ * expected to authenticate via the worker and re-fetch the page count.
  */
 export async function ingestDocument(
   data: ArrayBuffer,
   name: string,
-  fileSize: number
-): Promise<PageStack> {
+  fileSize: number,
+  options?: { allowProtected?: boolean }
+): Promise<IngestResult> {
   const sourceDocId = crypto.randomUUID();
   storeDoc(sourceDocId, data);
 
-  // Open the document in the worker to discover the page count
   await loadDocument(sourceDocId);
+
+  if (options?.allowProtected && (await needsPassword(sourceDocId))) {
+    return {
+      stack: {
+        id: crypto.randomUUID(),
+        pages: [],
+        name,
+        size: fileSize,
+      },
+      sourceDocId,
+      needsPassword: true,
+    };
+  }
+
   const count = await getPageCount(sourceDocId);
 
   const pages: PageRef[] = Array.from({ length: count }, (_, i) => ({
@@ -29,9 +53,13 @@ export async function ingestDocument(
   }));
 
   return {
-    id: crypto.randomUUID(),
-    pages,
-    name,
-    size: fileSize,
+    stack: {
+      id: crypto.randomUUID(),
+      pages,
+      name,
+      size: fileSize,
+    },
+    sourceDocId,
+    needsPassword: false,
   };
 }
