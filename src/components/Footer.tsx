@@ -33,6 +33,20 @@ export function Footer() {
             >
               MuPDF
             </a>
+            {process.env.NEXT_PUBLIC_PLAUSIBLE_DOMAIN && (
+              <>
+                {" · "}
+                {t("analytics")}{" "}
+                <a
+                  href="https://plausible.io"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="transition-colors hover:text-foreground"
+                >
+                  Plausible
+                </a>
+              </>
+            )}
           </span>
         </div>
         <a
