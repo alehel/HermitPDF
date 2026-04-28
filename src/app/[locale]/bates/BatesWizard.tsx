@@ -215,7 +215,7 @@ export function BatesWizard() {
             autoFocus
           />
         ) : (
-          <div className="grid gap-8 lg:grid-cols-2 lg:grid-rows-[auto_auto]">
+          <div className="grid grid-cols-1 gap-8 lg:grid-cols-2 lg:grid-rows-[auto_auto]">
             {/* File list — mobile: top; desktop: bottom-left */}
             <div className="lg:col-start-1 lg:row-start-2">
               <SortableFileList
