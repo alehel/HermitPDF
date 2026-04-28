@@ -41,7 +41,13 @@ export default async function Home({
   const t = await getTranslations("homeScreen");
 
   return (
-    <div className="flex min-h-screen flex-col bg-background">
+    <div
+      className="flex min-h-screen flex-col"
+      style={{
+        background:
+          "radial-gradient(ellipse 80% 60% at 50% 0%, var(--accent), var(--background) 70%)",
+      }}
+    >
       <AppHeader showBack={false} />
 
       {/* Main content */}
