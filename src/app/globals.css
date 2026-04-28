@@ -59,18 +59,18 @@
     --card-foreground: #1A1D26;
     --popover: #FFFFFF;
     --popover-foreground: #1A1D26;
-    --primary: #D85A30;
+    --primary: #BF4B22;
     --primary-foreground: #FFFFFF;
     --secondary: #ECEDF0;
     --secondary-foreground: #1A1D26;
     --muted: #ECEDF0;
-    --muted-foreground: #6E7181;
+    --muted-foreground: #595C6B;
     --accent: #FBF0EC;
     --accent-foreground: #1A1D26;
     --destructive: #E5484D;
     --border: rgba(0, 0, 0, 0.12);
     --input: rgba(0, 0, 0, 0.12);
-    --ring: #D85A30;
+    --ring: #BF4B22;
     --success: #1D9E75;
 
     --sidebar: #1A1D26;
@@ -95,12 +95,12 @@
     --card-foreground: #E4E5E9;
     --popover: #1F2128;
     --popover-foreground: #E4E5E9;
-    --primary: #E8744F;
+    --primary: #C5502A;
     --primary-foreground: #FFFFFF;
     --secondary: #131418;
     --secondary-foreground: #E4E5E9;
     --muted: #131418;
-    --muted-foreground: #6E7181;
+    --muted-foreground: #9EA1B0;
     --accent: #382318;
     --accent-foreground: #E4E5E9;
     --destructive: #E5484D;
@@ -131,6 +131,12 @@
     }
     body {
         @apply bg-background text-foreground;
+    }
+    /* Default focus indicator for any interactive element that doesn't define its own.
+       :where() has zero specificity, so utilities like outline-none / focus-visible:ring-3 override. */
+    :where(a, button, summary, [role="button"], [tabindex]:not([tabindex="-1"])):focus-visible {
+        outline: 2px solid var(--ring);
+        outline-offset: 2px;
     }
 }
 

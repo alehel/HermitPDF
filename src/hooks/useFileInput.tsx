@@ -4,6 +4,7 @@ import { type ReactNode, useCallback, useRef } from "react";
 
 interface UseFileInputOptions {
   multiple?: boolean;
+  ariaLabel?: string;
 }
 
 export function useFileInput(
@@ -34,6 +35,7 @@ export function useFileInput(
       multiple={options?.multiple ?? false}
       className="hidden"
       onChange={handleFileInput}
+      aria-label={options?.ariaLabel}
     />
   );
 

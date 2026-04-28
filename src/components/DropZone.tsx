@@ -10,6 +10,7 @@ interface DropZoneProps {
   onDrop?: (e: React.DragEvent) => void;
   isDragOver?: boolean;
   fill?: boolean;
+  autoFocus?: boolean;
 }
 
 export function DropZone({
@@ -22,11 +23,13 @@ export function DropZone({
   onDrop,
   isDragOver = false,
   fill = false,
+  autoFocus = false,
 }: DropZoneProps) {
   return (
     <div className={`flex flex-col items-center justify-center ${fill ? "h-full" : ""}`}>
       <button
         type="button"
+        autoFocus={autoFocus}
         onClick={onClick}
         onDragOver={onDragOver}
         onDragLeave={onDragLeave}

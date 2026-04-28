@@ -23,11 +23,15 @@ export default async function WorkbenchPage({
 }) {
   const { locale } = await params;
   setRequestLocale(locale);
+  const t = await getTranslations({ locale, namespace: "documentPanel" });
 
   return (
     <div className="flex h-full flex-col" data-workbench>
       <AppHeader />
-      <WorkbenchClient />
+      <main className="flex flex-1 flex-col overflow-hidden">
+        <h1 className="sr-only">{t("title")}</h1>
+        <WorkbenchClient />
+      </main>
     </div>
   );
 }

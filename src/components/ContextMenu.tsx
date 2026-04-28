@@ -29,12 +29,39 @@ export function ContextMenu({ x, y, items, onClose, anchorRef }: ContextMenuProp
     }
 
     function handleKeyDown(e: KeyboardEvent) {
-      if (e.key === "Escape") onClose();
+      if (e.key === "Escape") {
+        onClose();
+        return;
+      }
+      const menu = menuRef.current;
+      if (!menu) return;
+      const items = Array.from(menu.querySelectorAll<HTMLButtonElement>('[role="menuitem"]'));
+      if (items.length === 0) return;
+      const currentIndex = items.indexOf(document.activeElement as HTMLButtonElement);
+      if (e.key === "ArrowDown") {
+        e.preventDefault();
+        const next = currentIndex < 0 ? 0 : (currentIndex + 1) % items.length;
+        items[next].focus();
+      } else if (e.key === "ArrowUp") {
+        e.preventDefault();
+        const next = currentIndex < 0 ? items.length - 1 : (currentIndex - 1 + items.length) % items.length;
+        items[next].focus();
+      } else if (e.key === "Home") {
+        e.preventDefault();
+        items[0].focus();
+      } else if (e.key === "End") {
+        e.preventDefault();
+        items[items.length - 1].focus();
+      }
     }
 
     document.addEventListener("mousedown", handleClickOutside);
     document.addEventListener("keydown", handleKeyDown);
     window.addEventListener("scroll", onClose, true);
+
+    // Move focus into the menu so keyboard users can navigate items
+    const firstItem = menuRef.current?.querySelector<HTMLButtonElement>('[role="menuitem"]');
+    firstItem?.focus();
 
     return () => {
       document.removeEventListener("mousedown", handleClickOutside);

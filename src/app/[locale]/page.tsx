@@ -84,7 +84,7 @@ export default async function Home({
         </div>
 
         {/* Divider */}
-        <div className="mb-10 hidden w-full max-w-2xl items-center gap-4 sm:flex">
+        <div className="mb-10 flex w-full max-w-2xl items-center gap-4">
           <div className="h-px flex-1 bg-border" />
           <span className="text-xs text-muted-foreground">{t("or")}</span>
           <div className="h-px flex-1 bg-border" />
@@ -94,13 +94,13 @@ export default async function Home({
         <p className="mb-4 hidden text-sm text-muted-foreground sm:block">{t("workbenchHint")}</p>
         <Link
           href="/workbench"
-          className="group hidden w-full max-w-2xl items-center gap-6 rounded-2xl bg-sidebar p-6 text-left transition-all hover:shadow-xl sm:flex"
+          className="group flex w-full max-w-2xl items-center gap-4 rounded-2xl bg-sidebar p-4 text-left transition-all hover:shadow-xl sm:gap-6 sm:p-6"
         >
-          <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-xl bg-primary text-white">
+          <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-primary text-primary-foreground sm:h-14 sm:w-14">
             <WorkbenchIcon />
           </div>
           <div className="flex-1">
-            <h2 className="text-lg font-medium text-white">
+            <h2 className="text-base font-medium text-white sm:text-lg">
               {t("workbench")}
             </h2>
             <p className="mt-1 text-sm text-white/50">{t("workbenchDesc")}</p>

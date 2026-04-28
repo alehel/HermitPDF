@@ -12,7 +12,7 @@ export function DismissibleBanner({
   onDismiss,
 }: DismissibleBannerProps) {
   return (
-    <div className="flex items-center justify-between bg-accent px-4 py-2">
+    <div role="status" aria-live="polite" className="flex items-center justify-between bg-accent px-4 py-2">
       <p className="text-xs text-foreground">{message}</p>
       <button
         type="button"

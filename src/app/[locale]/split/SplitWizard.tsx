@@ -119,7 +119,7 @@ export function SplitWizard() {
   );
 
   const { isDragOver, handleDropZoneDragOver, handleDropZoneDragLeave, handleDropZoneDrop } = useDropZone(handleFilesAdded);
-  const { fileInput, openFilePicker } = useFileInput(handleFilesAdded);
+  const { fileInput, openFilePicker } = useFileInput(handleFilesAdded, { ariaLabel: t("dropTitle") });
 
   /* ---- Cleanup on unmount ---- */
   useEffect(() => {
@@ -221,6 +221,7 @@ export function SplitWizard() {
             onDragLeave={handleDropZoneDragLeave}
             onDrop={handleDropZoneDrop}
             isDragOver={isDragOver}
+            autoFocus
           />
         ) : (
           <>

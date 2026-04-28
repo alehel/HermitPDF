@@ -44,7 +44,7 @@ export function MergeWizard() {
   );
 
   const { isDragOver, handleDropZoneDragOver, handleDropZoneDragLeave, handleDropZoneDrop } = useDropZone(handleFilesAdded);
-  const { fileInput, openFilePicker } = useFileInput(handleFilesAdded, { multiple: true });
+  const { fileInput, openFilePicker } = useFileInput(handleFilesAdded, { multiple: true, ariaLabel: t("dropTitle") });
 
   /* ---- Cleanup on unmount ---- */
   useEffect(() => {
@@ -140,6 +140,7 @@ export function MergeWizard() {
             onDragLeave={handleDropZoneDragLeave}
             onDrop={handleDropZoneDrop}
             isDragOver={isDragOver}
+            autoFocus
           />
         ) : (
           <SortableFileList

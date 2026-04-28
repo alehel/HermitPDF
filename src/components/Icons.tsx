@@ -20,6 +20,8 @@ function Icon({
 }: BaseIconProps) {
   return (
     <svg
+      aria-hidden="true"
+      focusable="false"
       className={className}
       width={size}
       height={size}
@@ -379,6 +381,8 @@ export function PlusCircleIcon(props: IconProps) {
 export function CodebergIcon({ className, style }: { className?: string; style?: React.CSSProperties }) {
   return (
     <svg
+      aria-hidden="true"
+      focusable="false"
       className={className}
       viewBox="0 0 24 24"
       style={style}
