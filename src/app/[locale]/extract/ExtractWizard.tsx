@@ -136,7 +136,7 @@ export function ExtractWizard() {
       />
 
       <WizardContainer
-        icon={<ExtractIcon className="!h-5 !w-5" />}
+        icon={<ExtractIcon size={20} />}
         title={t("title")}
         empty={!file}
         footer={extractedImages.length > 0 ? {

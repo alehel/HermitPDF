@@ -110,7 +110,7 @@ export function ProtectWizard() {
       />
 
       <WizardContainer
-        icon={<LockIcon className="!h-5 !w-5" />}
+        icon={<LockIcon size={20} />}
         title={t("title")}
         empty={!file}
         footer={file ? {

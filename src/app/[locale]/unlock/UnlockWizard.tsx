@@ -153,7 +153,7 @@ export function UnlockWizard() {
       />
 
       <WizardContainer
-        icon={<UnlockIcon className="!h-5 !w-5" />}
+        icon={<UnlockIcon size={20} />}
         title={t("title")}
         empty={!file}
         footer={footerProps}

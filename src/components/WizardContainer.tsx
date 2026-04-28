@@ -40,13 +40,13 @@ export function WizardContainer({
       </main>
       {footer && !empty && (
         <footer className="border-t border-border bg-card px-6 py-4">
-          <div className={`mx-auto flex ${maxWidth} items-center justify-between`}>
+          <div className={`mx-auto flex ${maxWidth} flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4`}>
             <div className="text-sm text-muted-foreground">{footer.statusText}</div>
             <button
               type="button"
               onClick={footer.onButtonClick}
               disabled={footer.disabled}
-              className="flex items-center gap-2 rounded-xl bg-primary px-6 py-3 font-medium text-white transition-all hover:shadow-lg disabled:opacity-60"
+              className="flex items-center justify-center gap-2 rounded-xl bg-primary px-6 py-3 font-medium text-white transition-all hover:shadow-lg disabled:opacity-60"
             >
               {footer.buttonIcon ?? <DownloadIcon />}
               {footer.buttonLabel}
