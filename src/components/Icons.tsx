@@ -500,10 +500,10 @@ export function UnlockIcon({ className, style }: IconProps) {
 export function CompressIcon({ className, style }: IconProps) {
   return (
     <svg className={className} width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={style}>
-      <polyline points="4 14 10 14 10 20" />
-      <polyline points="20 10 14 10 14 4" />
-      <line x1="14" y1="10" x2="21" y2="3" />
-      <line x1="3" y1="21" x2="10" y2="14" />
+      <path d="M14 2H6a2 2 0 0 0-2 2v6c9 1 9 5 0 6v4a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-4c-9-1-9-5 0-6V8Z" />
+      <polyline points="14 2 14 8 20 8" />
+      <line x1="2" y1="12.6" x2="22" y2="12.6" strokeWidth="1" />
+      <line x1="2" y1="13.4" x2="22" y2="13.4" strokeWidth="1" />
     </svg>
   );
 }
