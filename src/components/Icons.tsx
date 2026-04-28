@@ -209,9 +209,10 @@ export function FileIcon(props: IconProps) {
 export function MergeIcon(props: IconProps) {
   return (
     <Icon size={32} {...props}>
-      <path d="M8 6H3v14h5" />
-      <path d="M16 6h5v14h-5" />
-      <path d="M12 3v18" />
+      <path d="M5 3v6l7 7" />
+      <path d="M19 3v6l-7 7" />
+      <path d="M12 16v5" />
+      <polyline points="9 18 12 21 15 18" />
     </Icon>
   );
 }
