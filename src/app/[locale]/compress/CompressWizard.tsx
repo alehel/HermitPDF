@@ -217,7 +217,7 @@ export function CompressWizard() {
             autoFocus
           />
         ) : (
-          <div className="grid gap-8 lg:grid-cols-2 lg:items-start">
+          <div className="grid grid-cols-1 gap-8 lg:grid-cols-2 lg:items-start">
             {/* Left column — file card (top), settings (middle), result (bottom) */}
             <div className="space-y-6">
             {/* File card */}
