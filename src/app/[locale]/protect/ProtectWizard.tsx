@@ -59,7 +59,7 @@ export function ProtectWizard() {
   );
 
   const { isDragOver, handleDropZoneDragOver, handleDropZoneDragLeave, handleDropZoneDrop } = useDropZone(handleFilesAdded);
-  const { fileInput, openFilePicker } = useFileInput(handleFilesAdded);
+  const { fileInput, openFilePicker } = useFileInput(handleFilesAdded, { ariaLabel: t("dropTitle") });
 
   useEffect(() => {
     return () => {
@@ -130,6 +130,7 @@ export function ProtectWizard() {
             onDragLeave={handleDropZoneDragLeave}
             onDrop={handleDropZoneDrop}
             isDragOver={isDragOver}
+            autoFocus
           />
         ) : (
           <>
@@ -177,12 +178,14 @@ export function ProtectWizard() {
                   value={confirm}
                   onChange={(e) => setConfirm(e.target.value)}
                   autoComplete="new-password"
+                  aria-invalid={showMismatch || undefined}
+                  aria-describedby={showMismatch ? "protect-confirm-error" : undefined}
                   className={`w-full rounded-xl border bg-card px-4 py-2.5 text-sm text-foreground outline-none ${
                     showMismatch ? "border-red-500 focus:border-red-500" : "border-border focus:border-primary"
                   }`}
                 />
                 {showMismatch && (
-                  <p className="mt-1.5 text-xs text-red-500">{t("mismatch")}</p>
+                  <p id="protect-confirm-error" className="mt-1.5 text-xs text-red-500">{t("mismatch")}</p>
                 )}
               </div>
 

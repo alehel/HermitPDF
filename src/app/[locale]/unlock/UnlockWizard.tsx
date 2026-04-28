@@ -64,7 +64,7 @@ export function UnlockWizard() {
   );
 
   const { isDragOver, handleDropZoneDragOver, handleDropZoneDragLeave, handleDropZoneDrop } = useDropZone(handleFilesAdded);
-  const { fileInput, openFilePicker } = useFileInput(handleFilesAdded);
+  const { fileInput, openFilePicker } = useFileInput(handleFilesAdded, { ariaLabel: t("dropTitle") });
 
   useEffect(() => {
     return () => {
@@ -168,6 +168,7 @@ export function UnlockWizard() {
             onDragLeave={handleDropZoneDragLeave}
             onDrop={handleDropZoneDrop}
             isDragOver={isDragOver}
+            autoFocus
           />
         ) : (
           <>

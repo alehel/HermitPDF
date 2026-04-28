@@ -63,7 +63,7 @@ export function BatesWizard() {
   );
 
   const { isDragOver, handleDropZoneDragOver, handleDropZoneDragLeave, handleDropZoneDrop } = useDropZone(handleFilesAdded);
-  const { fileInput, openFilePicker } = useFileInput(handleFilesAdded, { multiple: true });
+  const { fileInput, openFilePicker } = useFileInput(handleFilesAdded, { multiple: true, ariaLabel: t("dropTitle") });
 
   /* ---- Cleanup on unmount ---- */
   useEffect(() => {
@@ -212,6 +212,7 @@ export function BatesWizard() {
             onDragLeave={handleDropZoneDragLeave}
             onDrop={handleDropZoneDrop}
             isDragOver={isDragOver}
+            autoFocus
           />
         ) : (
           <div className="grid gap-8 lg:grid-cols-2 lg:grid-rows-[auto_auto]">

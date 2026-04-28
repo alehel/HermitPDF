@@ -83,7 +83,7 @@ export function CompressWizard() {
   );
 
   const { isDragOver, handleDropZoneDragOver, handleDropZoneDragLeave, handleDropZoneDrop } = useDropZone(handleFilesAdded);
-  const { fileInput, openFilePicker } = useFileInput(handleFilesAdded);
+  const { fileInput, openFilePicker } = useFileInput(handleFilesAdded, { ariaLabel: t("dropTitle") });
 
   /* ---- Cleanup on unmount ---- */
   useEffect(() => {
@@ -214,6 +214,7 @@ export function CompressWizard() {
             onDragLeave={handleDropZoneDragLeave}
             onDrop={handleDropZoneDrop}
             isDragOver={isDragOver}
+            autoFocus
           />
         ) : (
           <div className="grid gap-8 lg:grid-cols-2 lg:items-start">

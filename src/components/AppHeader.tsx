@@ -22,17 +22,13 @@ export function AppHeader({ showBack = true }: AppHeaderProps) {
     <header
       className={`flex items-center gap-3 px-6 py-4 ${showBack ? "border-b border-border" : ""}`}
     >
-      {showBack && (
+      {showBack ? (
         <Link
           href="/"
-          className="rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-border hover:text-foreground"
-          title={t("back")}
+          aria-label={t("back")}
+          className="-mx-1.5 flex items-center gap-2 rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-border hover:text-foreground"
         >
           <ArrowLeftIcon />
-        </Link>
-      )}
-      {showBack ? (
-        <Link href="/">
           <Image
             src={logoSrc}
             alt="HermitPDF"

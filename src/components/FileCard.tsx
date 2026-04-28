@@ -47,6 +47,7 @@ export function FileCard({
         onPointerDown={(e) => e.stopPropagation()}
         className="rounded-lg p-1.5 text-muted-foreground opacity-60 transition-all hover:bg-red-500/10 hover:text-red-500 md:opacity-0 md:group-hover:opacity-100"
         title={removeTitle}
+        aria-label={removeTitle}
       >
         <TrashIcon />
       </button>
