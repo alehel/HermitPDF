@@ -119,7 +119,7 @@ export function MergeWizard() {
       />
 
       <WizardContainer
-        icon={<MergeIcon className="!h-5 !w-5" />}
+        icon={<MergeIcon size={20} />}
         title={t("title")}
         badge={wizardTitleBadge}
         empty={isEmpty}

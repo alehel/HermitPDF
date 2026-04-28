@@ -141,7 +141,7 @@ export function RotateWizard() {
       />
 
       <WizardContainer
-        icon={<RotateIcon className="!h-5 !w-5" />}
+        icon={<RotateIcon size={20} />}
         title={t("title")}
         empty={!file}
         footer={file && stack ? {

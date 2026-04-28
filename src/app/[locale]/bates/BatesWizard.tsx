@@ -190,7 +190,7 @@ export function BatesWizard() {
       />
 
       <WizardContainer
-        icon={<BatesIcon className="!h-5 !w-5" />}
+        icon={<BatesIcon size={20} />}
         title={t("title")}
         badge={wizardTitleBadge}
         empty={isEmpty}

@@ -182,7 +182,7 @@ export function CompressWizard() {
       />
 
       <WizardContainer
-        icon={<CompressIcon className="!h-5 !w-5" />}
+        icon={<CompressIcon size={20} />}
         title={t("title")}
         empty={isEmpty}
         wide={!isEmpty}

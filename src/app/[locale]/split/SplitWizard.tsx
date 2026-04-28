@@ -201,7 +201,7 @@ export function SplitWizard() {
       />
 
       <WizardContainer
-        icon={<ScissorsIcon className="!h-5 !w-5" />}
+        icon={<ScissorsIcon size={20} />}
         title={t("title")}
         empty={!file}
         footer={file ? {
@@ -242,7 +242,7 @@ export function SplitWizard() {
                   onClick={handleAddRange}
                   className="flex items-center gap-1 text-xs font-medium text-primary transition-colors hover:text-primary/80"
                 >
-                  <PlusCircleIcon className="!h-4 !w-4" />
+                  <PlusCircleIcon size={16} />
                   {t("addRange")}
                 </button>
               </div>

@@ -105,7 +105,7 @@ export default async function Home({
             </h2>
             <p className="mt-1 text-sm text-white/50">{t("workbenchDesc")}</p>
           </div>
-          <ArrowRightIcon className="h-5 w-5 text-white/40 transition-transform group-hover:translate-x-1" />
+          <ArrowRightIcon size={20} className="text-white/40 transition-transform group-hover:translate-x-1" />
         </Link>
       </main>
 
