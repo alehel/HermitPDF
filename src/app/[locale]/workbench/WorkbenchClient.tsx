@@ -121,6 +121,24 @@ export function WorkbenchClient() {
     return () => window.removeEventListener("beforeunload", handler);
   }, [hasStacks]);
 
+  // Release all docs and thumbnails on unmount (e.g., navigating to a different
+  // tool route). Without this, every doc opened in the workbench leaks for the
+  // rest of the session — React state is destroyed on unmount, but pdfStore and
+  // mupdfClient's handle map are module-level and survive.
+  useEffect(() => {
+    return () => {
+      const docIds = allDocIdsRef.current();
+      const pageIds = allPageIdsRef.current();
+      for (const docId of docIds) {
+        releaseDocument(docId);
+        releaseDoc(docId);
+      }
+      for (const pageId of pageIds) {
+        clearThumbnail(pageId);
+      }
+    };
+  }, []);
+
   const hasSelection = selectedPageIds.size > 0;
 
   // Flat ordered list of all page IDs for Shift-click range selection
