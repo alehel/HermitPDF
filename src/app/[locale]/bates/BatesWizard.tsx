@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslations } from "next-intl";
 import { BatesIcon } from "@/components/Icons";
 import { DropZone } from "@/components/DropZone";
+import { ProcessingOverlay } from "@/components/ProcessingOverlay";
 import { WizardBanners } from "@/components/WizardBanners";
 import { WizardContainer } from "@/components/WizardContainer";
 import { SortableFileList } from "@/components/SortableFileList";
@@ -14,6 +15,7 @@ import { releaseWizardFile } from "@/lib/releaseWizardFile";
 import { DEFAULT_BATES_CONFIG, formatBatesNumber } from "@/lib/batesStamp";
 import { exportBatesPdfs, downloadBatesOutput } from "@/lib/batesExport";
 import { renderBatesPreview } from "@/lib/mupdfClient";
+import { useDelayedFlag } from "@/hooks/useDelayedFlag";
 import { useDropZone } from "@/hooks/useDropZone";
 import { useFileInput } from "@/hooks/useFileInput";
 import { usePdfIngestion } from "@/hooks/usePdfIngestion";
@@ -33,6 +35,7 @@ export function BatesWizard() {
   const [files, setFiles] = useState<WizardFile[]>([]);
   const [config, setConfig] = useState<BatesConfig>(DEFAULT_BATES_CONFIG);
   const [isProcessing, setIsProcessing] = useState(false);
+  const showOverlay = useDelayedFlag(isProcessing);
 
   // Preview state
   const [previewPage, setPreviewPage] = useState(1);
@@ -180,6 +183,12 @@ export function BatesWizard() {
   return (
     <>
       {fileInput}
+
+      <ProcessingOverlay
+        visible={showOverlay}
+        title={t("overlayTitle")}
+        description={t("overlayDescription")}
+      />
 
       <WizardBanners
         rejectedMessage={rejectedFiles.length > 0 ? t("rejectedFiles", { files: rejectedFiles.join(", ") }) : undefined}

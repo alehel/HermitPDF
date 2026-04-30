@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslations } from "next-intl";
 import { UnlockIcon, EyeIcon, EyeOffIcon } from "@/components/Icons";
 import { DropZone } from "@/components/DropZone";
+import { ProcessingOverlay } from "@/components/ProcessingOverlay";
 import { WizardBanners } from "@/components/WizardBanners";
 import { WizardContainer } from "@/components/WizardContainer";
 import { FileCard } from "@/components/FileCard";
@@ -12,6 +13,7 @@ import { formatSize } from "@/lib/formatSize";
 import { releaseWizardFile } from "@/lib/releaseWizardFile";
 import { authenticatePassword, decryptPdf, getPageCount } from "@/lib/mupdfClient";
 import { downloadPdf } from "@/lib/pdfExport";
+import { useDelayedFlag } from "@/hooks/useDelayedFlag";
 import { useDropZone } from "@/hooks/useDropZone";
 import { useFileInput } from "@/hooks/useFileInput";
 import { usePdfIngestion } from "@/hooks/usePdfIngestion";
@@ -30,6 +32,8 @@ export function UnlockWizard() {
   const [isAuthenticating, setIsAuthenticating] = useState(false);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
+  const showAuthOverlay = useDelayedFlag(isAuthenticating);
+  const showExportOverlay = useDelayedFlag(isExporting);
 
   const fileRef = useRef(file);
   fileRef.current = file;
@@ -143,6 +147,12 @@ export function UnlockWizard() {
   return (
     <>
       {fileInput}
+
+      <ProcessingOverlay
+        visible={showAuthOverlay || showExportOverlay}
+        title={showExportOverlay ? t("overlayTitleExport") : t("overlayTitleAuth")}
+        description={t("overlayDescription")}
+      />
 
       <WizardBanners
         rejectedMessage={rejectedFiles.length > 0 ? t("rejectedFiles", { files: rejectedFiles.join(", ") }) : undefined}

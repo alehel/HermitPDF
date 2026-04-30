@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslations } from "next-intl";
 import { CompressIcon } from "@/components/Icons";
 import { DropZone } from "@/components/DropZone";
+import { ProcessingOverlay } from "@/components/ProcessingOverlay";
 import { WizardBanners } from "@/components/WizardBanners";
 import { WizardContainer } from "@/components/WizardContainer";
 import { FileCard } from "@/components/FileCard";
@@ -14,6 +15,7 @@ import { releaseWizardFile } from "@/lib/releaseWizardFile";
 import { DEFAULT_COMPRESS_CONFIG, compressedFilename } from "@/lib/compress";
 import { compressPdf, renderCompressedPreview } from "@/lib/mupdfClient";
 import { downloadPdf } from "@/lib/pdfExport";
+import { useDelayedFlag } from "@/hooks/useDelayedFlag";
 import { useDropZone } from "@/hooks/useDropZone";
 import { useFileInput } from "@/hooks/useFileInput";
 import { usePdfIngestion } from "@/hooks/usePdfIngestion";
@@ -42,6 +44,21 @@ export function CompressWizard() {
   const [config, setConfig] = useState<CompressConfig>(DEFAULT_COMPRESS_CONFIG);
   const [isProcessing, setIsProcessing] = useState(false);
   const [result, setResult] = useState<CompressionResult | null>(null);
+
+  const showOverlay = useDelayedFlag(isProcessing);
+  const [overlayStep, setOverlayStep] = useState(0);
+  useEffect(() => {
+    if (!showOverlay) {
+      setOverlayStep(0);
+      return;
+    }
+    const interval = setInterval(() => {
+      setOverlayStep((s) => Math.min(s + 1, 2));
+    }, 6000);
+    return () => clearInterval(interval);
+  }, [showOverlay]);
+  const overlayStepKeys = ["overlayStep1", "overlayStep2", "overlayStep3"] as const;
+  const overlayTitle = t(overlayStepKeys[overlayStep]);
 
   // Preview state
   const [previewPage, setPreviewPage] = useState(1);
@@ -172,6 +189,12 @@ export function CompressWizard() {
   return (
     <>
       {fileInput}
+
+      <ProcessingOverlay
+        visible={showOverlay}
+        title={overlayTitle}
+        description={t("overlayDescription")}
+      />
 
       <WizardBanners
         rejectedMessage={rejectedFiles.length > 0 ? t("rejectedFiles", { files: rejectedFiles.join(", ") }) : undefined}

@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslations } from "next-intl";
 import { MergeIcon } from "@/components/Icons";
 import { DropZone } from "@/components/DropZone";
+import { ProcessingOverlay } from "@/components/ProcessingOverlay";
 import { WizardBanners } from "@/components/WizardBanners";
 import { WizardContainer } from "@/components/WizardContainer";
 import { SortableFileList } from "@/components/SortableFileList";
@@ -11,6 +12,7 @@ import { WizardFile } from "@/lib/types";
 import { formatSize } from "@/lib/formatSize";
 import { releaseWizardFile } from "@/lib/releaseWizardFile";
 import { exportMergedPdf, downloadPdf } from "@/lib/pdfExport";
+import { useDelayedFlag } from "@/hooks/useDelayedFlag";
 import { useDropZone } from "@/hooks/useDropZone";
 import { useFileInput } from "@/hooks/useFileInput";
 import { usePdfIngestion } from "@/hooks/usePdfIngestion";
@@ -20,6 +22,7 @@ export function MergeWizard() {
 
   const [files, setFiles] = useState<WizardFile[]>([]);
   const [isMerging, setIsMerging] = useState(false);
+  const showOverlay = useDelayedFlag(isMerging);
 
   const filesRef = useRef(files);
   filesRef.current = files;
@@ -109,6 +112,12 @@ export function MergeWizard() {
   return (
     <>
       {fileInput}
+
+      <ProcessingOverlay
+        visible={showOverlay}
+        title={t("overlayTitle")}
+        description={t("overlayDescription")}
+      />
 
       <WizardBanners
         rejectedMessage={rejectedFiles.length > 0 ? t("rejectedFiles", { files: rejectedFiles.join(", ") }) : undefined}
