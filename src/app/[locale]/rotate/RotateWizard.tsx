@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslations } from "next-intl";
 import { RotateIcon, RotateLeftIcon, RotateRightIcon } from "@/components/Icons";
 import { DropZone } from "@/components/DropZone";
+import { ProcessingOverlay } from "@/components/ProcessingOverlay";
 import { WizardBanners } from "@/components/WizardBanners";
 import { WizardContainer } from "@/components/WizardContainer";
 import { FileCard } from "@/components/FileCard";
@@ -14,6 +15,7 @@ import { releaseWizardFile } from "@/lib/releaseWizardFile";
 import { clearThumbnail } from "@/lib/thumbnailCache";
 import { exportMergedPdf, downloadPdf } from "@/lib/pdfExport";
 import { normalizeRotation } from "@/lib/rotationUtils";
+import { useDelayedFlag } from "@/hooks/useDelayedFlag";
 import { useDropZone } from "@/hooks/useDropZone";
 import { useFileInput } from "@/hooks/useFileInput";
 import { usePdfIngestion } from "@/hooks/usePdfIngestion";
@@ -28,6 +30,7 @@ export function RotateWizard() {
   const [file, setFile] = useState<WizardFile | null>(null);
   const [stack, setStack] = useState<PageStack | null>(null);
   const [isExporting, setIsExporting] = useState(false);
+  const showOverlay = useDelayedFlag(isExporting);
 
   const fileRef = useRef(file);
   fileRef.current = file;
@@ -131,6 +134,12 @@ export function RotateWizard() {
   return (
     <>
       {fileInput}
+
+      <ProcessingOverlay
+        visible={showOverlay}
+        title={t("overlayTitle")}
+        description={t("overlayDescription")}
+      />
 
       <WizardBanners
         rejectedMessage={rejectedFiles.length > 0 ? t("rejectedFiles", { files: rejectedFiles.join(", ") }) : undefined}
