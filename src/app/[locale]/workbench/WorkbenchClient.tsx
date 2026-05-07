@@ -12,7 +12,7 @@ import { ExportModal } from "@/components/ExportModal";
 import { PageStack } from "@/lib/types";
 import { releaseDoc } from "@/lib/pdfStore";
 import { releaseDocument } from "@/lib/mupdfClient";
-import { ingestDocument } from "@/lib/pdfIngest";
+import { ingestDocument, MAX_INGEST_BYTES } from "@/lib/pdfIngest";
 import { clearThumbnail } from "@/lib/thumbnailCache";
 import { normalizeRotation } from "@/lib/rotationUtils";
 import { exportMergedPdf, downloadPdf } from "@/lib/pdfExport";
@@ -59,11 +59,16 @@ export function WorkbenchClient() {
   const handleHistoryEvict = useCallback((evicted: HistorySnapshot) => {
     const allDocIds = allDocIdsRef.current();
     const allPageIds = allPageIdsRef.current();
+    const releasedDocIds = new Set<string>();
     for (const stack of evicted.stacks) {
       for (const page of stack.pages) {
-        if (!allDocIds.has(page.sourceDocId)) {
+        if (
+          !allDocIds.has(page.sourceDocId) &&
+          !releasedDocIds.has(page.sourceDocId)
+        ) {
+          releasedDocIds.add(page.sourceDocId);
           releaseDocument(page.sourceDocId);
-          releaseDoc(page.sourceDocId);
+          void releaseDoc(page.sourceDocId);
         }
         if (!allPageIds.has(page.id)) {
           clearThumbnail(page.id);
@@ -96,6 +101,7 @@ export function WorkbenchClient() {
 
   const [rejectedFiles, setRejectedFiles] = useState<string[]>([]);
   const [passwordProtectedFiles, setPasswordProtectedFiles] = useState<string[]>([]);
+  const [oversizedFiles, setOversizedFiles] = useState<string[]>([]);
   const [contextMenu, setContextMenu] = useState<{
     x: number;
     y: number;
@@ -131,7 +137,7 @@ export function WorkbenchClient() {
       const pageIds = allPageIdsRef.current();
       for (const docId of docIds) {
         releaseDocument(docId);
-        releaseDoc(docId);
+        void releaseDoc(docId);
       }
       for (const pageId of pageIds) {
         clearThumbnail(pageId);
@@ -226,16 +232,21 @@ export function WorkbenchClient() {
       newStacks: PageStack[];
       rejected: string[];
       passwordProtected: string[];
+      oversized: string[];
     }> => {
       const allFiles = Array.from(files);
       const pdfFiles = allFiles.filter((f) => f.type === "application/pdf");
       const rejected = allFiles
         .filter((f) => f.type !== "application/pdf")
         .map((f) => f.name);
+      const oversized = pdfFiles
+        .filter((f) => f.size > MAX_INGEST_BYTES)
+        .map((f) => f.name);
+      const candidates = pdfFiles.filter((f) => f.size <= MAX_INGEST_BYTES);
 
       const passwordProtected: string[] = [];
       const results = await Promise.all(
-        pdfFiles.map(async (f) => {
+        candidates.map(async (f) => {
           try {
             const data = await f.arrayBuffer();
             const result = await ingestDocument(data, f.name, f.size);
@@ -254,7 +265,7 @@ export function WorkbenchClient() {
       );
 
       const newStacks = results.filter((s): s is PageStack => s !== null);
-      return { newStacks, rejected, passwordProtected };
+      return { newStacks, rejected, passwordProtected, oversized };
     },
     []
   );
@@ -276,11 +287,12 @@ export function WorkbenchClient() {
 
   const handleFilesAdded = useCallback(
     async (files: FileList, insertAtIndex?: number) => {
-      const { newStacks, rejected, passwordProtected } =
+      const { newStacks, rejected, passwordProtected, oversized } =
         await ingestDroppedFiles(files);
 
       if (rejected.length > 0) setRejectedFiles(rejected);
       if (passwordProtected.length > 0) setPasswordProtectedFiles(passwordProtected);
+      if (oversized.length > 0) setOversizedFiles(oversized);
       if (newStacks.length === 0) return;
 
       insertStacks(newStacks, insertAtIndex);
@@ -640,6 +652,13 @@ export function WorkbenchClient() {
           message={t("passwordProtectedFiles", { files: passwordProtectedFiles.join(", ") })}
           dismissLabel={t("dismiss")}
           onDismiss={() => setPasswordProtectedFiles([])}
+        />
+      )}
+      {oversizedFiles.length > 0 && (
+        <DismissibleBanner
+          message={t("oversizedFiles", { files: oversizedFiles.join(", ") })}
+          dismissLabel={t("dismiss")}
+          onDismiss={() => setOversizedFiles([])}
         />
       )}
       {noImagesFound && (

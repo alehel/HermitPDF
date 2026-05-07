@@ -1,12 +1,25 @@
 import { PageStack, PageRef } from "./types";
-import { storeDoc } from "./pdfStore";
-import { getPageCount, loadDocument, needsPassword } from "./mupdfClient";
+import { storeDoc, releaseDoc } from "./pdfStore";
+import {
+  getPageCount,
+  loadDocument,
+  needsPassword,
+  releaseDocument,
+} from "./mupdfClient";
 
 export interface IngestResult {
   stack: PageStack;
   sourceDocId: string;
   needsPassword: boolean;
 }
+
+/**
+ * Hard ceiling for upload size. The practical bottleneck is MuPDF's WASM heap
+ * (32-bit, ~4 GB max, less in practice once parsed object overhead is counted).
+ * 1 GB leaves comfortable headroom; users with bigger PDFs hit a clear error
+ * instead of an OOM tab crash partway through ingestion.
+ */
+export const MAX_INGEST_BYTES = 1_000_000_000;
 
 /**
  * Ingest a raw PDF: store the original bytes once and build a PageStack
@@ -26,40 +39,48 @@ export async function ingestDocument(
   options?: { allowProtected?: boolean }
 ): Promise<IngestResult> {
   const sourceDocId = crypto.randomUUID();
-  storeDoc(sourceDocId, data);
+  await storeDoc(sourceDocId, data);
 
-  await loadDocument(sourceDocId);
+  try {
+    await loadDocument(sourceDocId);
 
-  if (options?.allowProtected && (await needsPassword(sourceDocId))) {
+    if (options?.allowProtected && (await needsPassword(sourceDocId))) {
+      return {
+        stack: {
+          id: crypto.randomUUID(),
+          pages: [],
+          name,
+          size: fileSize,
+        },
+        sourceDocId,
+        needsPassword: true,
+      };
+    }
+
+    const count = await getPageCount(sourceDocId);
+
+    const pages: PageRef[] = Array.from({ length: count }, (_, i) => ({
+      id: crypto.randomUUID(),
+      sourceDocId,
+      sourcePageIndex: i,
+      rotation: 0,
+    }));
+
     return {
       stack: {
         id: crypto.randomUUID(),
-        pages: [],
+        pages,
         name,
         size: fileSize,
       },
       sourceDocId,
-      needsPassword: true,
+      needsPassword: false,
     };
+  } catch (err) {
+    // Anything past the storeDoc write must roll back the OPFS file and any
+    // worker-side handle so a failed ingest doesn't leak storage or memory.
+    releaseDocument(sourceDocId);
+    void releaseDoc(sourceDocId);
+    throw err;
   }
-
-  const count = await getPageCount(sourceDocId);
-
-  const pages: PageRef[] = Array.from({ length: count }, (_, i) => ({
-    id: crypto.randomUUID(),
-    sourceDocId,
-    sourcePageIndex: i,
-    rotation: 0,
-  }));
-
-  return {
-    stack: {
-      id: crypto.randomUUID(),
-      pages,
-      name,
-      size: fileSize,
-    },
-    sourceDocId,
-    needsPassword: false,
-  };
 }

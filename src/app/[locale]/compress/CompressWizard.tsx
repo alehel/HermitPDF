@@ -75,6 +75,8 @@ export function CompressWizard() {
     setRejectedFiles,
     passwordProtectedFiles,
     setPasswordProtectedFiles,
+    oversizedFiles,
+    setOversizedFiles,
   } = usePdfIngestion();
 
   /* ---- File ingestion ---- */
@@ -199,9 +201,11 @@ export function CompressWizard() {
       <WizardBanners
         rejectedMessage={rejectedFiles.length > 0 ? t("rejectedFiles", { files: rejectedFiles.join(", ") }) : undefined}
         passwordProtectedMessage={passwordProtectedFiles.length > 0 ? t("passwordProtectedFiles", { files: passwordProtectedFiles.join(", ") }) : undefined}
+        oversizedMessage={oversizedFiles.length > 0 ? t("oversizedFiles", { files: oversizedFiles.join(", ") }) : undefined}
         dismissLabel={t("dismiss")}
         onDismissRejected={() => setRejectedFiles([])}
         onDismissPasswordProtected={() => setPasswordProtectedFiles([])}
+        onDismissOversized={() => setOversizedFiles([])}
       />
 
       <WizardContainer

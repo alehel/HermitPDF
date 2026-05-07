@@ -44,6 +44,8 @@ export function UnlockWizard() {
     setRejectedFiles,
     passwordProtectedFiles,
     setPasswordProtectedFiles,
+    oversizedFiles,
+    setOversizedFiles,
   } = usePdfIngestion({ allowProtected: true });
 
   const handleFilesAdded = useCallback(
@@ -157,9 +159,11 @@ export function UnlockWizard() {
       <WizardBanners
         rejectedMessage={rejectedFiles.length > 0 ? t("rejectedFiles", { files: rejectedFiles.join(", ") }) : undefined}
         passwordProtectedMessage={passwordProtectedFiles.length > 0 ? t("passwordProtectedFiles", { files: passwordProtectedFiles.join(", ") }) : undefined}
+        oversizedMessage={oversizedFiles.length > 0 ? t("oversizedFiles", { files: oversizedFiles.join(", ") }) : undefined}
         dismissLabel={t("dismiss")}
         onDismissRejected={() => setRejectedFiles([])}
         onDismissPasswordProtected={() => setPasswordProtectedFiles([])}
+        onDismissOversized={() => setOversizedFiles([])}
       />
 
       <WizardContainer
