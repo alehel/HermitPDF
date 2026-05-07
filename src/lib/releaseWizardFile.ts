@@ -3,8 +3,9 @@ import { releaseDoc } from "./pdfStore";
 import type { WizardFile } from "./types";
 
 export function releaseWizardFile(file: WizardFile): void {
-  for (const page of file.stack.pages) {
-    releaseDocument(page.sourceDocId);
-    releaseDoc(page.sourceDocId);
+  const sourceDocIds = new Set(file.stack.pages.map((p) => p.sourceDocId));
+  for (const sourceDocId of sourceDocIds) {
+    releaseDocument(sourceDocId);
+    void releaseDoc(sourceDocId);
   }
 }

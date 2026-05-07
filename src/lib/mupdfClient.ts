@@ -38,13 +38,11 @@ async function ensureLoaded(docId: string): Promise<number> {
     getWorker().releaseDocument(oldHandle);
   }
 
-  const data = retrieveDoc(docId);
+  const data = await retrieveDoc(docId);
   if (!data) throw new Error(`No document data for ${docId}`);
 
   const w = getWorker();
-  // .slice(0) because transferring ownership removes the original in docStore
-  const copy = data.slice(0);
-  const handle = await w.openDocument(Comlink.transfer(copy, [copy]));
+  const handle = await w.openDocument(Comlink.transfer(data, [data]));
   handles.set(docId, handle);
   return handle;
 }
