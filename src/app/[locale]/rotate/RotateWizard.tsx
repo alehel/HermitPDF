@@ -52,10 +52,11 @@ export function RotateWizard() {
       if (files.length === 0) return;
 
       const newFile = files[0];
-      setFile((prev) => {
-        if (prev) releaseWizardFile(prev);
-        return newFile;
-      });
+      // Side effect outside the updater: Strict Mode double-invokes updaters,
+      // which would release the previous file twice and race in OPFS.
+      const prev = fileRef.current;
+      if (prev) releaseWizardFile(prev);
+      setFile(newFile);
       setStack(newFile.stack);
 
       if (pdfCount > 1) {
@@ -78,10 +79,9 @@ export function RotateWizard() {
 
   /* ---- Remove the file ---- */
   const handleRemove = useCallback(() => {
-    setFile((prev) => {
-      if (prev) releaseWizardFile(prev);
-      return null;
-    });
+    const prev = fileRef.current;
+    if (prev) releaseWizardFile(prev);
+    setFile(null);
     setStack(null);
   }, []);
 
