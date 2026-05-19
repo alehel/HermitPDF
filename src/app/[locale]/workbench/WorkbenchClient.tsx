@@ -248,8 +248,7 @@ export function WorkbenchClient() {
       const results = await Promise.all(
         candidates.map(async (f) => {
           try {
-            const data = await f.arrayBuffer();
-            const result = await ingestDocument(data, f.name, f.size);
+            const result = await ingestDocument(f, f.name, f.size);
             return result.stack;
           } catch (err: unknown) {
             const msg =

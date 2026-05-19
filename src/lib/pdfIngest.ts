@@ -33,13 +33,13 @@ export const MAX_INGEST_BYTES = 1_000_000_000;
  * expected to authenticate via the worker and re-fetch the page count.
  */
 export async function ingestDocument(
-  data: ArrayBuffer,
+  source: Blob,
   name: string,
   fileSize: number,
   options?: { allowProtected?: boolean }
 ): Promise<IngestResult> {
   const sourceDocId = crypto.randomUUID();
-  await storeDoc(sourceDocId, data);
+  await storeDoc(sourceDocId, source);
 
   try {
     await loadDocument(sourceDocId);
