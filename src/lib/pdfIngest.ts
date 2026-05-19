@@ -79,7 +79,7 @@ export async function ingestDocument(
   } catch (err) {
     // Anything past the storeDoc write must roll back the OPFS file and any
     // worker-side handle so a failed ingest doesn't leak storage or memory.
-    releaseDocument(sourceDocId);
+    void releaseDocument(sourceDocId);
     void releaseDoc(sourceDocId);
     throw err;
   }

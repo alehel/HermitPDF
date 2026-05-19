@@ -67,7 +67,7 @@ export function WorkbenchClient() {
           !releasedDocIds.has(page.sourceDocId)
         ) {
           releasedDocIds.add(page.sourceDocId);
-          releaseDocument(page.sourceDocId);
+          void releaseDocument(page.sourceDocId);
           void releaseDoc(page.sourceDocId);
         }
         if (!allPageIds.has(page.id)) {
@@ -136,7 +136,7 @@ export function WorkbenchClient() {
       const docIds = allDocIdsRef.current();
       const pageIds = allPageIdsRef.current();
       for (const docId of docIds) {
-        releaseDocument(docId);
+        void releaseDocument(docId);
         void releaseDoc(docId);
       }
       for (const pageId of pageIds) {

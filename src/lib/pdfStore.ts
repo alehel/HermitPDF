@@ -22,6 +22,15 @@ function fileName(id: string): string {
 // writable stream is open).
 const writing = new Map<string, Promise<void>>();
 
+// Coalesces concurrent `releaseDoc` calls for the same id. Two simultaneous
+// `dir.removeEntry` calls on the same file race in Chrome — one wins, the
+// other throws NoModificationAllowedError. React Strict Mode (enabled by
+// Next dev) double-invokes setState updaters, so a setFile updater that
+// calls releaseDoc fires it twice. Even outside Strict Mode, callers that
+// release the same id from two paths could collide. Idempotency here makes
+// the call safe regardless.
+const removing = new Map<string, Promise<void>>();
+
 export function storeDoc(id: string, data: ArrayBuffer): Promise<void> {
   let self: Promise<void>;
   const run = async () => {
@@ -55,7 +64,18 @@ export async function retrieveDoc(
   }
 }
 
-export async function releaseDoc(id: string): Promise<void> {
+export function releaseDoc(id: string): Promise<void> {
+  const existing = removing.get(id);
+  if (existing) return existing;
+  const p = doRelease(id);
+  removing.set(id, p);
+  p.finally(() => {
+    if (removing.get(id) === p) removing.delete(id);
+  });
+  return p;
+}
+
+async function doRelease(id: string): Promise<void> {
   const pending = writing.get(id);
   if (pending) {
     await pending.catch(() => {
