@@ -45,7 +45,8 @@
     "exportSelection": "Export selection as PDF",
     "exportAll": "Export PDF",
     "viewGroup": "View",
-    "compact": "Compact"
+    "compact": "Compact",
+    "oversizedFiles": "Files too large to load (max 1 GB): {files}"
   },
   "documentItem": {
     "remove": "Remove",
@@ -130,7 +131,8 @@
     "rejectedFiles": "Skipped non-PDF files: {files}",
     "passwordProtectedFiles": "Skipped password-protected files: {files}",
     "dismiss": "Dismiss",
-    "back": "Back"
+    "back": "Back",
+    "oversizedFiles": "Files too large to load (max 1 GB): {files}"
   },
   "splitWizard": {
     "title": "Split PDF",
@@ -155,7 +157,8 @@
     "onlyOneFile": "Only one file can be split at a time. Using the first PDF.",
     "dismiss": "Dismiss",
     "back": "Back",
-    "remove": "Remove file"
+    "remove": "Remove file",
+    "oversizedFiles": "Files too large to load (max 1 GB): {files}"
   },
   "common": {
     "dismiss": "Dismiss",
@@ -163,7 +166,7 @@
     "toggleTheme": "Toggle theme"
   },
   "footer": {
-    "copyright": "\u00a9 {year}",
+    "copyright": "© {year}",
     "madeIn": "Made in Norway 🇳🇴, hosted in Europe 🇪🇺",
     "sourceCode": "Source Code",
     "openSource": "Open Source",
@@ -176,7 +179,7 @@
     "dropTitle": "Drop PDF files here",
     "dropSubtitle": "or click to browse",
     "privacyNote": "Files are processed entirely in your browser. Nothing is uploaded.",
-    "dragToReorder": "Drag to reorder \u2014 numbering follows file order",
+    "dragToReorder": "Drag to reorder — numbering follows file order",
     "addMoreFiles": "Add more files",
     "configuration": "Configuration",
     "prefix": "Prefix",
@@ -208,7 +211,8 @@
     "passwordProtectedFiles": "Skipped password-protected files: {files}",
     "dismiss": "Dismiss",
     "back": "Back",
-    "stampExample": "Example: {example}"
+    "stampExample": "Example: {example}",
+    "oversizedFiles": "Files too large to load (max 1 GB): {files}"
   },
   "rotateWizard": {
     "title": "Rotate PDF",
@@ -234,7 +238,8 @@
     "onlyOneFile": "Only one file can be processed at a time. Using the first PDF.",
     "dismiss": "Dismiss",
     "back": "Back",
-    "remove": "Remove file"
+    "remove": "Remove file",
+    "oversizedFiles": "Files too large to load (max 1 GB): {files}"
   },
   "unlockWizard": {
     "title": "Unlock PDF",
@@ -266,7 +271,8 @@
     "onlyOneFile": "Only one file can be processed at a time. Using the first PDF.",
     "dismiss": "Dismiss",
     "back": "Back",
-    "remove": "Remove file"
+    "remove": "Remove file",
+    "oversizedFiles": "Files too large to load (max 1 GB): {files}"
   },
   "protectWizard": {
     "title": "Protect PDF",
@@ -294,7 +300,8 @@
     "onlyOneFile": "Only one file can be processed at a time. Using the first PDF.",
     "dismiss": "Dismiss",
     "back": "Back",
-    "remove": "Remove file"
+    "remove": "Remove file",
+    "oversizedFiles": "Files too large to load (max 1 GB): {files}"
   },
   "compressWizard": {
     "title": "Compress PDF",
@@ -344,7 +351,8 @@
     "onlyOneFile": "Only one file can be processed at a time. Using the first PDF.",
     "dismiss": "Dismiss",
     "back": "Back",
-    "remove": "Remove file"
+    "remove": "Remove file",
+    "oversizedFiles": "Files too large to load (max 1 GB): {files}"
   },
   "extractImagesWizard": {
     "title": "Extract Images",
@@ -366,6 +374,7 @@
     "imageAlt": "Image {index} from page {page}",
     "downloadImage": "Download image",
     "downloadAll": "Download All",
-    "formatNote": "JPEG and JPEG 2000 images are extracted as-is, with color profiles preserved. Other image formats are converted to PNG."
+    "formatNote": "JPEG and JPEG 2000 images are extracted as-is, with color profiles preserved. Other image formats are converted to PNG.",
+    "oversizedFiles": "Files too large to load (max 1 GB): {files}"
   }
 }

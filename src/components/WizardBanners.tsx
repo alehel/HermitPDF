@@ -3,17 +3,21 @@ import { DismissibleBanner } from "./DismissibleBanner";
 interface WizardBannersProps {
   rejectedMessage?: string;
   passwordProtectedMessage?: string;
+  oversizedMessage?: string;
   dismissLabel: string;
   onDismissRejected?: () => void;
   onDismissPasswordProtected?: () => void;
+  onDismissOversized?: () => void;
 }
 
 export function WizardBanners({
   rejectedMessage,
   passwordProtectedMessage,
+  oversizedMessage,
   dismissLabel,
   onDismissRejected,
   onDismissPasswordProtected,
+  onDismissOversized,
 }: WizardBannersProps) {
   return (
     <>
@@ -29,6 +33,13 @@ export function WizardBanners({
           message={passwordProtectedMessage}
           dismissLabel={dismissLabel}
           onDismiss={onDismissPasswordProtected}
+        />
+      )}
+      {oversizedMessage && onDismissOversized && (
+        <DismissibleBanner
+          message={oversizedMessage}
+          dismissLabel={dismissLabel}
+          onDismiss={onDismissOversized}
         />
       )}
     </>

@@ -52,6 +52,8 @@ export function BatesWizard() {
     setRejectedFiles,
     passwordProtectedFiles,
     setPasswordProtectedFiles,
+    oversizedFiles,
+    setOversizedFiles,
   } = usePdfIngestion();
 
   /* ---- File ingestion ---- */
@@ -79,11 +81,11 @@ export function BatesWizard() {
 
   /* ---- Remove a file ---- */
   const handleRemove = useCallback((id: string) => {
-    setFiles((prev) => {
-      const removed = prev.find((f) => f.id === id);
-      if (removed) releaseWizardFile(removed);
-      return prev.filter((f) => f.id !== id);
-    });
+    // Side effect outside the updater: Strict Mode double-invokes updaters,
+    // which would release the file twice and race in OPFS.
+    const removed = filesRef.current.find((f) => f.id === id);
+    if (removed) releaseWizardFile(removed);
+    setFiles((prev) => prev.filter((f) => f.id !== id));
   }, []);
 
   /* ---- Reorder files ---- */
@@ -193,9 +195,11 @@ export function BatesWizard() {
       <WizardBanners
         rejectedMessage={rejectedFiles.length > 0 ? t("rejectedFiles", { files: rejectedFiles.join(", ") }) : undefined}
         passwordProtectedMessage={passwordProtectedFiles.length > 0 ? t("passwordProtectedFiles", { files: passwordProtectedFiles.join(", ") }) : undefined}
+        oversizedMessage={oversizedFiles.length > 0 ? t("oversizedFiles", { files: oversizedFiles.join(", ") }) : undefined}
         dismissLabel={t("dismiss")}
         onDismissRejected={() => setRejectedFiles([])}
         onDismissPasswordProtected={() => setPasswordProtectedFiles([])}
+        onDismissOversized={() => setOversizedFiles([])}
       />
 
       <WizardContainer

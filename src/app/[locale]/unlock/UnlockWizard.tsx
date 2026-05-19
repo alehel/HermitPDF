@@ -44,6 +44,8 @@ export function UnlockWizard() {
     setRejectedFiles,
     passwordProtectedFiles,
     setPasswordProtectedFiles,
+    oversizedFiles,
+    setOversizedFiles,
   } = usePdfIngestion({ allowProtected: true });
 
   const handleFilesAdded = useCallback(
@@ -52,10 +54,11 @@ export function UnlockWizard() {
       if (files.length === 0) return;
 
       const newFile = files[0];
-      setFile((prev) => {
-        if (prev) releaseWizardFile(prev);
-        return newFile;
-      });
+      // Side effect outside the updater: Strict Mode double-invokes updaters,
+      // which would release the previous file twice and race in OPFS.
+      const prev = fileRef.current;
+      if (prev) releaseWizardFile(prev);
+      setFile(newFile);
       setPassword("");
       setAuthError(false);
       setIsAuthenticated(false);
@@ -78,10 +81,9 @@ export function UnlockWizard() {
   }, []);
 
   const handleRemove = useCallback(() => {
-    setFile((prev) => {
-      if (prev) releaseWizardFile(prev);
-      return null;
-    });
+    const prev = fileRef.current;
+    if (prev) releaseWizardFile(prev);
+    setFile(null);
     setPassword("");
     setAuthError(false);
     setIsAuthenticated(false);
@@ -157,9 +159,11 @@ export function UnlockWizard() {
       <WizardBanners
         rejectedMessage={rejectedFiles.length > 0 ? t("rejectedFiles", { files: rejectedFiles.join(", ") }) : undefined}
         passwordProtectedMessage={passwordProtectedFiles.length > 0 ? t("passwordProtectedFiles", { files: passwordProtectedFiles.join(", ") }) : undefined}
+        oversizedMessage={oversizedFiles.length > 0 ? t("oversizedFiles", { files: oversizedFiles.join(", ") }) : undefined}
         dismissLabel={t("dismiss")}
         onDismissRejected={() => setRejectedFiles([])}
         onDismissPasswordProtected={() => setPasswordProtectedFiles([])}
+        onDismissOversized={() => setOversizedFiles([])}
       />
 
       <WizardContainer
