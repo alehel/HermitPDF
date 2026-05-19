@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useState } from "react";
-import { ingestDocument } from "@/lib/pdfIngest";
+import { ingestDocument, MAX_INGEST_BYTES } from "@/lib/pdfIngest";
 import type { WizardFile } from "@/lib/types";
 
 interface IngestResult {
@@ -21,6 +21,7 @@ export function usePdfIngestion(hookOptions?: UsePdfIngestionOptions) {
   const [passwordProtectedFiles, setPasswordProtectedFiles] = useState<
     string[]
   >([]);
+  const [oversizedFiles, setOversizedFiles] = useState<string[]>([]);
 
   const allowProtected = hookOptions?.allowProtected ?? false;
 
@@ -43,11 +44,15 @@ export function usePdfIngestion(hookOptions?: UsePdfIngestionOptions) {
         )
         .map((f) => f.name);
       const pwProtected: string[] = [];
+      const oversized = pdfFiles
+        .filter((f) => f.size > MAX_INGEST_BYTES)
+        .map((f) => f.name);
 
+      const candidates = pdfFiles.filter((f) => f.size <= MAX_INGEST_BYTES);
       const toProcess =
         options?.maxFiles != null
-          ? pdfFiles.slice(0, options.maxFiles)
-          : pdfFiles;
+          ? candidates.slice(0, options.maxFiles)
+          : candidates;
 
       const results = await Promise.all(
         toProcess.map(async (f) => {
@@ -82,6 +87,7 @@ export function usePdfIngestion(hookOptions?: UsePdfIngestionOptions) {
 
       if (rejected.length > 0) setRejectedFiles(rejected);
       if (pwProtected.length > 0) setPasswordProtectedFiles(pwProtected);
+      if (oversized.length > 0) setOversizedFiles(oversized);
 
       return { files, pdfCount: pdfFiles.length };
     },
@@ -94,5 +100,7 @@ export function usePdfIngestion(hookOptions?: UsePdfIngestionOptions) {
     setRejectedFiles,
     passwordProtectedFiles,
     setPasswordProtectedFiles,
+    oversizedFiles,
+    setOversizedFiles,
   };
 }

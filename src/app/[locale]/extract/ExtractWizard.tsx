@@ -40,6 +40,8 @@ export function ExtractWizard() {
     setRejectedFiles,
     passwordProtectedFiles,
     setPasswordProtectedFiles,
+    oversizedFiles,
+    setOversizedFiles,
   } = usePdfIngestion();
 
   /* ---- Extract images (auto-triggered on file load) ---- */
@@ -50,13 +52,25 @@ export function ExtractWizard() {
     try {
       const docId = f.stack.pages[0].sourceDocId;
       const images = await extractImagesFromDocument(docId);
+      // If the user removed (or replaced) this file while the extract was
+      // running, discard the result.
+      if (fileRef.current?.id !== f.id) return;
       if (images.length === 0) {
         setNoImagesFound(true);
       } else {
         setExtractedImages(images);
       }
+    } catch (err) {
+      // Don't let a rejection here become an unhandled promise rejection (which
+      // surfaces as a dev error overlay and breaks the wizard). If this file is
+      // already gone, the error is expected — the worker handle was destroyed.
+      if (fileRef.current?.id === f.id) {
+        console.error("Image extraction failed:", err);
+      }
     } finally {
-      setIsExtracting(false);
+      if (fileRef.current?.id === f.id) {
+        setIsExtracting(false);
+      }
     }
   }, []);
 
@@ -67,10 +81,11 @@ export function ExtractWizard() {
       if (files.length === 0) return;
 
       const newFile = files[0];
-      setFile((prev) => {
-        if (prev) releaseWizardFile(prev);
-        return newFile;
-      });
+      // Side effect outside the updater: Strict Mode double-invokes updaters,
+      // which would release the previous file twice and race in OPFS.
+      const prev = fileRef.current;
+      if (prev) releaseWizardFile(prev);
+      setFile(newFile);
       setNoImagesFound(false);
       handleExtract(newFile);
 
@@ -94,10 +109,9 @@ export function ExtractWizard() {
 
   /* ---- Remove the file ---- */
   const handleRemove = useCallback(() => {
-    setFile((prev) => {
-      if (prev) releaseWizardFile(prev);
-      return null;
-    });
+    const prev = fileRef.current;
+    if (prev) releaseWizardFile(prev);
+    setFile(null);
     setNoImagesFound(false);
     setExtractedImages([]);
   }, []);
@@ -130,9 +144,11 @@ export function ExtractWizard() {
       <WizardBanners
         rejectedMessage={rejectedFiles.length > 0 ? t("rejectedFiles", { files: rejectedFiles.join(", ") }) : undefined}
         passwordProtectedMessage={passwordProtectedFiles.length > 0 ? t("passwordProtectedFiles", { files: passwordProtectedFiles.join(", ") }) : undefined}
+        oversizedMessage={oversizedFiles.length > 0 ? t("oversizedFiles", { files: oversizedFiles.join(", ") }) : undefined}
         dismissLabel={t("dismiss")}
         onDismissRejected={() => setRejectedFiles([])}
         onDismissPasswordProtected={() => setPasswordProtectedFiles([])}
+        onDismissOversized={() => setOversizedFiles([])}
       />
 
       <WizardContainer

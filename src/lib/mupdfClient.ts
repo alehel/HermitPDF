@@ -21,6 +21,30 @@ function getWorker(): Comlink.Remote<MupdfWorkerApi> {
 const MAX_HANDLES = 20;
 const handles = new Map<string, number>(); // insertion-order = LRU order
 
+// Tracks in-flight worker ops per docId so `releaseDocument` can defer
+// destroying the MuPDF doc until pending calls have settled. Without this,
+// `releaseDocument(handle)` queued between two awaits (e.g. between
+// getPageCount and extractImages in extractImagesFromDocument) gets processed
+// by the worker before the second call, and the second call's getDoc(handle)
+// throws "No document for handle N".
+const inFlightOps = new Map<string, Set<Promise<unknown>>>();
+
+function trackOp<T>(docId: string, p: Promise<T>): Promise<T> {
+  let set = inFlightOps.get(docId);
+  if (!set) {
+    set = new Set();
+    inFlightOps.set(docId, set);
+  }
+  set.add(p);
+  p.finally(() => {
+    const current = inFlightOps.get(docId);
+    if (!current) return;
+    current.delete(p);
+    if (current.size === 0) inFlightOps.delete(docId);
+  });
+  return p;
+}
+
 async function ensureLoaded(docId: string): Promise<number> {
   const existing = handles.get(docId);
   if (existing !== undefined) {
@@ -30,32 +54,44 @@ async function ensureLoaded(docId: string): Promise<number> {
     return existing;
   }
 
-  // Evict least-recently-used handle if at capacity
+  // Evict least-recently-used handle if at capacity. Skip docs with in-flight
+  // ops — destroying them mid-call would break the worker call. If everything
+  // is in-flight (rare), proceed without evicting and let the cap drift.
   if (handles.size >= MAX_HANDLES) {
-    const oldest = handles.keys().next().value!;
-    const oldHandle = handles.get(oldest)!;
-    handles.delete(oldest);
-    getWorker().releaseDocument(oldHandle);
+    let evict: string | undefined;
+    for (const candidate of handles.keys()) {
+      if (!inFlightOps.has(candidate)) {
+        evict = candidate;
+        break;
+      }
+    }
+    if (evict !== undefined) {
+      const oldHandle = handles.get(evict)!;
+      handles.delete(evict);
+      getWorker().releaseDocument(oldHandle);
+    }
   }
 
-  const data = retrieveDoc(docId);
+  const data = await retrieveDoc(docId);
   if (!data) throw new Error(`No document data for ${docId}`);
 
   const w = getWorker();
-  // .slice(0) because transferring ownership removes the original in docStore
-  const copy = data.slice(0);
-  const handle = await w.openDocument(Comlink.transfer(copy, [copy]));
+  const handle = await w.openDocument(Comlink.transfer(data, [data]));
   handles.set(docId, handle);
   return handle;
 }
 
 export async function loadDocument(docId: string): Promise<void> {
-  await ensureLoaded(docId);
+  return trackOp(docId, (async () => {
+    await ensureLoaded(docId);
+  })());
 }
 
 export async function getPageCount(docId: string): Promise<number> {
-  const handle = await ensureLoaded(docId);
-  return getWorker().getPageCount(handle);
+  return trackOp(docId, (async () => {
+    const handle = await ensureLoaded(docId);
+    return getWorker().getPageCount(handle);
+  })());
 }
 
 /**
@@ -68,9 +104,11 @@ export async function renderPage(
   scale: number,
   rotation: number = 0
 ): Promise<ImageData> {
-  const handle = await ensureLoaded(docId);
-  const dpi = scale * 72;
-  return getWorker().renderPage(handle, pageIndex, dpi, rotation);
+  return trackOp(docId, (async () => {
+    const handle = await ensureLoaded(docId);
+    const dpi = scale * 72;
+    return getWorker().renderPage(handle, pageIndex, dpi, rotation);
+  })());
 }
 
 /**
@@ -83,22 +121,31 @@ export async function renderThumbnail(
   width: number,
   rotation: number = 0
 ): Promise<{ blobUrl: string; aspectRatio: number }> {
-  const handle = await ensureLoaded(docId);
-  const dpr =
-    typeof window !== "undefined" ? window.devicePixelRatio || 1 : 1;
-  const { pngData, aspectRatio } = await getWorker().renderThumbnail(
-    handle,
-    pageIndex,
-    width,
-    dpr,
-    rotation
-  );
-  const blob = new Blob([pngData as BlobPart], { type: "image/png" });
-  const blobUrl = URL.createObjectURL(blob);
-  return { blobUrl, aspectRatio };
+  return trackOp(docId, (async () => {
+    const handle = await ensureLoaded(docId);
+    const dpr =
+      typeof window !== "undefined" ? window.devicePixelRatio || 1 : 1;
+    const { pngData, aspectRatio } = await getWorker().renderThumbnail(
+      handle,
+      pageIndex,
+      width,
+      dpr,
+      rotation
+    );
+    const blob = new Blob([pngData as BlobPart], { type: "image/png" });
+    const blobUrl = URL.createObjectURL(blob);
+    return { blobUrl, aspectRatio };
+  })());
 }
 
-export function releaseDocument(docId: string): void {
+export async function releaseDocument(docId: string): Promise<void> {
+  // Wait for any in-flight worker calls on this doc to settle. Otherwise the
+  // worker may process releaseDocument between two queued calls and the second
+  // call's getDoc(handle) throws "No document for handle N".
+  const pending = inFlightOps.get(docId);
+  if (pending && pending.size > 0) {
+    await Promise.allSettled([...pending]);
+  }
   const handle = handles.get(docId);
   if (handle !== undefined) {
     getWorker().releaseDocument(handle);
@@ -115,20 +162,24 @@ export async function extractImagesFromPage(
   docId: string,
   pageIndex: number
 ): Promise<ExtractedImage[]> {
-  const handle = await ensureLoaded(docId);
-  const result = await getWorker().extractImages(handle, [pageIndex]);
-  return result.images as ExtractedImage[];
+  return trackOp(docId, (async () => {
+    const handle = await ensureLoaded(docId);
+    const result = await getWorker().extractImages(handle, [pageIndex]);
+    return result.images as ExtractedImage[];
+  })());
 }
 
 /** Extract embedded images from all pages of a document. */
 export async function extractImagesFromDocument(
   docId: string
 ): Promise<ExtractedImage[]> {
-  const handle = await ensureLoaded(docId);
-  const count = await getWorker().getPageCount(handle);
-  const indices = Array.from({ length: count }, (_, i) => i);
-  const result = await getWorker().extractImages(handle, indices);
-  return result.images as ExtractedImage[];
+  return trackOp(docId, (async () => {
+    const handle = await ensureLoaded(docId);
+    const count = await getWorker().getPageCount(handle);
+    const indices = Array.from({ length: count }, (_, i) => i);
+    const result = await getWorker().extractImages(handle, indices);
+    return result.images as ExtractedImage[];
+  })());
 }
 
 /** Get canvas-pixel positions of images on a page for hit-testing. */
@@ -138,9 +189,11 @@ export async function getImagePositions(
   scale: number,
   rotation: number = 0
 ): Promise<ImagePosition[]> {
-  const handle = await ensureLoaded(docId);
-  const dpi = scale * 72;
-  return getWorker().getImagePositions(handle, pageIndex, dpi, rotation) as Promise<ImagePosition[]>;
+  return trackOp(docId, (async () => {
+    const handle = await ensureLoaded(docId);
+    const dpi = scale * 72;
+    return getWorker().getImagePositions(handle, pageIndex, dpi, rotation) as Promise<ImagePosition[]>;
+  })());
 }
 
 /** Extract a single image by on-page index (matches getImagePositions ordering). Always PNG. */
@@ -149,8 +202,10 @@ export async function extractSingleImage(
   pageIndex: number,
   imageIndex: number
 ): Promise<{ width: number; height: number; data: Uint8Array; mimeType: string; extension: string } | null> {
-  const handle = await ensureLoaded(docId);
-  return getWorker().extractSingleImage(handle, pageIndex, imageIndex);
+  return trackOp(docId, (async () => {
+    const handle = await ensureLoaded(docId);
+    return getWorker().extractSingleImage(handle, pageIndex, imageIndex);
+  })());
 }
 
 /** Apply Bates numbering to all pages of a document. */
@@ -158,8 +213,10 @@ export async function applyBatesStamp(
   docId: string,
   config: BatesConfig & { startNumber: number }
 ): Promise<Uint8Array> {
-  const handle = await ensureLoaded(docId);
-  return getWorker().applyBatesStamp(handle, config);
+  return trackOp(docId, (async () => {
+    const handle = await ensureLoaded(docId);
+    return getWorker().applyBatesStamp(handle, config);
+  })());
 }
 
 /** Render a single page with Bates stamp for preview. */
@@ -169,8 +226,10 @@ export async function renderBatesPreview(
   config: BatesConfig & { startNumber: number },
   dpi: number = 144
 ): Promise<ImageData> {
-  const handle = await ensureLoaded(docId);
-  return getWorker().renderBatesPreview(handle, pageIndex, config, dpi);
+  return trackOp(docId, (async () => {
+    const handle = await ensureLoaded(docId);
+    return getWorker().renderBatesPreview(handle, pageIndex, config, dpi);
+  })());
 }
 
 /** Compress a PDF — recompresses images as JPEG and re-saves with garbage collection / sanitization. */
@@ -178,8 +237,10 @@ export async function compressPdf(
   docId: string,
   config: CompressConfig
 ): Promise<Uint8Array> {
-  const handle = await ensureLoaded(docId);
-  return getWorker().compressPdf(handle, config);
+  return trackOp(docId, (async () => {
+    const handle = await ensureLoaded(docId);
+    return getWorker().compressPdf(handle, config);
+  })());
 }
 
 /** Render a single page as it would appear after compression, for preview. */
@@ -189,8 +250,10 @@ export async function renderCompressedPreview(
   config: CompressConfig,
   dpi: number = 144
 ): Promise<ImageData> {
-  const handle = await ensureLoaded(docId);
-  return getWorker().renderCompressedPreview(handle, pageIndex, config, dpi);
+  return trackOp(docId, (async () => {
+    const handle = await ensureLoaded(docId);
+    return getWorker().renderCompressedPreview(handle, pageIndex, config, dpi);
+  })());
 }
 
 /** Encrypt a PDF with a password (used for both user and owner password). */
@@ -198,14 +261,18 @@ export async function encryptPdf(
   docId: string,
   password: string
 ): Promise<Uint8Array> {
-  const handle = await ensureLoaded(docId);
-  return getWorker().encryptPdf(handle, password);
+  return trackOp(docId, (async () => {
+    const handle = await ensureLoaded(docId);
+    return getWorker().encryptPdf(handle, password);
+  })());
 }
 
 /** Whether the document needs a password to read its pages. */
 export async function needsPassword(docId: string): Promise<boolean> {
-  const handle = await ensureLoaded(docId);
-  return getWorker().needsPassword(handle);
+  return trackOp(docId, (async () => {
+    const handle = await ensureLoaded(docId);
+    return getWorker().needsPassword(handle);
+  })());
 }
 
 /** Authenticate the document with a password. Returns true on success. */
@@ -213,14 +280,18 @@ export async function authenticatePassword(
   docId: string,
   password: string
 ): Promise<boolean> {
-  const handle = await ensureLoaded(docId);
-  return getWorker().authenticatePassword(handle, password);
+  return trackOp(docId, (async () => {
+    const handle = await ensureLoaded(docId);
+    return getWorker().authenticatePassword(handle, password);
+  })());
 }
 
 /** Save the document with encryption removed. Document must be authenticated first. */
 export async function decryptPdf(docId: string): Promise<Uint8Array> {
-  const handle = await ensureLoaded(docId);
-  return getWorker().decryptPdf(handle);
+  return trackOp(docId, (async () => {
+    const handle = await ensureLoaded(docId);
+    return getWorker().decryptPdf(handle);
+  })());
 }
 
 /** Merge pages into a single PDF using document handles for resource deduplication. */
@@ -242,5 +313,9 @@ export async function mergePdfs(
     rotation: p.rotation,
   }));
 
-  return getWorker().mergeFromHandles(pageSpecs, metadata);
+  // Track the merge op against every source doc so a concurrent release on any
+  // of them waits for the merge to finish.
+  const merge = getWorker().mergeFromHandles(pageSpecs, metadata);
+  for (const docId of uniqueDocIds) trackOp(docId, merge);
+  return merge;
 }
