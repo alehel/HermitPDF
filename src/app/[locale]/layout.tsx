@@ -44,7 +44,7 @@ export default async function LocaleLayout({
         {/* Plausible analytics — only included when NEXT_PUBLIC_PLAUSIBLE_DOMAIN is set.
             Omitted from self-hosted Docker builds so they ship analytics-free. */}
         {process.env.NEXT_PUBLIC_PLAUSIBLE_DOMAIN && (
-          <script defer data-domain={process.env.NEXT_PUBLIC_PLAUSIBLE_DOMAIN} src="https://plausible.io/js/script.js" />
+          <script defer data-domain={process.env.NEXT_PUBLIC_PLAUSIBLE_DOMAIN} src="https://plausible.alehel.org/js/script.js" />
         )}
       </head>
       <body
