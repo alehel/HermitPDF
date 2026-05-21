@@ -50,7 +50,7 @@ export function UnlockWizard() {
 
   const handleFilesAdded = useCallback(
     async (fileList: FileList) => {
-      const { files, pdfCount } = await ingestFiles(fileList, { maxFiles: 1 });
+      const { files, fileCount } = await ingestFiles(fileList, { maxFiles: 1 });
       if (files.length === 0) return;
 
       const newFile = files[0];
@@ -63,7 +63,7 @@ export function UnlockWizard() {
       setAuthError(false);
       setIsAuthenticated(false);
 
-      if (pdfCount > 1) {
+      if (fileCount > 1) {
         setRejectedFiles([t("onlyOneFile")]);
       }
     },

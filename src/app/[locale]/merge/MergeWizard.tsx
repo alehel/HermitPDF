@@ -16,6 +16,7 @@ import { useDelayedFlag } from "@/hooks/useDelayedFlag";
 import { useDropZone } from "@/hooks/useDropZone";
 import { useFileInput } from "@/hooks/useFileInput";
 import { usePdfIngestion } from "@/hooks/usePdfIngestion";
+import { ACCEPT_ATTRIBUTE } from "@/lib/fileDetect";
 
 export function MergeWizard() {
   const t = useTranslations("mergeWizard");
@@ -35,7 +36,7 @@ export function MergeWizard() {
     setPasswordProtectedFiles,
     oversizedFiles,
     setOversizedFiles,
-  } = usePdfIngestion();
+  } = usePdfIngestion({ acceptImages: true });
 
   /* ---- File ingestion ---- */
   const handleFilesAdded = useCallback(
@@ -49,7 +50,7 @@ export function MergeWizard() {
   );
 
   const { isDragOver, handleDropZoneDragOver, handleDropZoneDragLeave, handleDropZoneDrop } = useDropZone(handleFilesAdded);
-  const { fileInput, openFilePicker } = useFileInput(handleFilesAdded, { multiple: true, ariaLabel: t("dropTitle") });
+  const { fileInput, openFilePicker } = useFileInput(handleFilesAdded, { multiple: true, ariaLabel: t("dropTitle"), accept: ACCEPT_ATTRIBUTE });
 
   /* ---- Cleanup on unmount ---- */
   useEffect(() => {
