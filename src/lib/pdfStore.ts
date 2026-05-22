@@ -31,17 +31,15 @@ const writing = new Map<string, Promise<void>>();
 // the call safe regardless.
 const removing = new Map<string, Promise<void>>();
 
-export function storeDoc(id: string, data: ArrayBuffer): Promise<void> {
+export function storeDoc(id: string, source: Blob): Promise<void> {
   let self: Promise<void>;
   const run = async () => {
     try {
       const dir = await getDocsDir();
       const handle = await dir.getFileHandle(fileName(id), { create: true });
       const writable = await handle.createWritable();
-      await writable.write(data);
-      await writable.close();
+      await source.stream().pipeTo(writable);
     } finally {
-      // Only clear if we're still the latest write for this id.
       if (writing.get(id) === self) writing.delete(id);
     }
   };
