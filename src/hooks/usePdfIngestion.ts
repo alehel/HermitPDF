@@ -57,8 +57,7 @@ export function usePdfIngestion(hookOptions?: UsePdfIngestionOptions) {
       const results = await Promise.all(
         toProcess.map(async (f) => {
           try {
-            const data = await f.arrayBuffer();
-            const result = await ingestDocument(data, f.name, f.size, {
+            const result = await ingestDocument(f, f.name, f.size, {
               allowProtected,
             });
             const wizardFile: WizardFile = {
