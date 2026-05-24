@@ -10,8 +10,11 @@ export function loadSavedMetadata(): PdfMetadata {
   return { title: "", author: "", subject: "", keywords: "" };
 }
 
-export function saveMetadata(metadata: PdfMetadata) {
+export function saveMetadata(metadata: PdfMetadata): boolean {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(metadata));
-  } catch {}
+    return true;
+  } catch {
+    return false;
+  }
 }
