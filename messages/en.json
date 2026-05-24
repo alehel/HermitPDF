@@ -44,6 +44,7 @@
     "export": "Export",
     "exportSelection": "Export selection as PDF",
     "exportAll": "Export PDF",
+    "properties": "Document properties",
     "viewGroup": "View",
     "compact": "Compact",
     "oversizedFiles": "Files too large to load (max 1 GB): {files}"
@@ -72,14 +73,15 @@
     "previewTab": "Preview",
     "saveImage": "Save image"
   },
-  "exportModal": {
-    "title": "Export Settings",
+  "propertiesModal": {
+    "title": "Document Properties",
     "pdfTitle": "Title",
     "author": "Author",
     "subject": "Subject",
     "keywords": "Keywords",
     "keywordsHint": "Comma-separated",
-    "cancel": "Cancel"
+    "cancel": "Cancel",
+    "save": "Save"
   },
   "error": {
     "title": "Something went wrong",
