@@ -47,7 +47,8 @@
     "properties": "Document properties",
     "viewGroup": "View",
     "compact": "Compact",
-    "oversizedFiles": "Files too large to load (max 1 GB): {files}"
+    "oversizedFiles": "Files too large to load (max 1 GB): {files}",
+    "metadataSaveFailed": "Couldn't save document properties — browser storage may be disabled (e.g. private browsing)."
   },
   "documentItem": {
     "remove": "Remove",

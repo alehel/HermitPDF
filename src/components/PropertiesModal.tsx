@@ -17,9 +17,10 @@ import {
 
 interface PropertiesModalProps {
   onClose: () => void;
+  onSaveFailed: () => void;
 }
 
-export function PropertiesModal({ onClose }: PropertiesModalProps) {
+export function PropertiesModal({ onClose, onSaveFailed }: PropertiesModalProps) {
   const t = useTranslations("propertiesModal");
   const [metadata, setMetadata] = useState<PdfMetadata>(loadSavedMetadata);
   const firstInputRef = useRef<HTMLInputElement>(null);
@@ -29,9 +30,9 @@ export function PropertiesModal({ onClose }: PropertiesModalProps) {
   }, []);
 
   const handleSave = useCallback(() => {
-    saveMetadata(metadata);
+    if (!saveMetadata(metadata)) onSaveFailed();
     onClose();
-  }, [metadata, onClose]);
+  }, [metadata, onClose, onSaveFailed]);
 
   function update(field: keyof PdfMetadata, value: string) {
     setMetadata((prev) => ({ ...prev, [field]: value }));

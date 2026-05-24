@@ -115,6 +115,7 @@ export function WorkbenchClient() {
   const [thumbnailVersions, setThumbnailVersions] = useState<Map<string, number>>(new Map());
   const [activeTab, setActiveTab] = useState<"documents" | "preview">("documents");
   const [showPropertiesModal, setShowPropertiesModal] = useState(false);
+  const [metadataSaveFailed, setMetadataSaveFailed] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Warn before navigating away when documents are loaded
@@ -674,6 +675,13 @@ export function WorkbenchClient() {
           onDismiss={clearNoImagesFound}
         />
       )}
+      {metadataSaveFailed && (
+        <DismissibleBanner
+          message={t("metadataSaveFailed")}
+          dismissLabel={t("dismiss")}
+          onDismiss={() => setMetadataSaveFailed(false)}
+        />
+      )}
       <input
         ref={fileInputRef}
         type="file"
@@ -753,6 +761,7 @@ export function WorkbenchClient() {
       {showPropertiesModal && (
         <PropertiesModal
           onClose={() => setShowPropertiesModal(false)}
+          onSaveFailed={() => setMetadataSaveFailed(true)}
         />
       )}
     </>
