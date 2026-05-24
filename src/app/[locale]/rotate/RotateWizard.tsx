@@ -12,7 +12,6 @@ import { PdfThumbnail } from "@/components/PdfThumbnail";
 import { PageStack, WizardFile } from "@/lib/types";
 import { formatSize } from "@/lib/formatSize";
 import { releaseWizardFile } from "@/lib/releaseWizardFile";
-import { clearThumbnail } from "@/lib/thumbnailCache";
 import { exportMergedPdf, downloadPdf } from "@/lib/pdfExport";
 import { normalizeRotation } from "@/lib/rotationUtils";
 import { useDelayedFlag } from "@/hooks/useDelayedFlag";
@@ -87,7 +86,6 @@ export function RotateWizard() {
 
   /* ---- Rotate a single page ---- */
   const handleRotatePage = useCallback((pageId: string, delta: number) => {
-    clearThumbnail(pageId);
     setStack((prev) => {
       if (!prev) return prev;
       return {
@@ -105,7 +103,6 @@ export function RotateWizard() {
   const handleRotateAll = useCallback((delta: number) => {
     setStack((prev) => {
       if (!prev) return prev;
-      for (const p of prev.pages) clearThumbnail(p.id);
       return {
         ...prev,
         pages: prev.pages.map((p) => ({
