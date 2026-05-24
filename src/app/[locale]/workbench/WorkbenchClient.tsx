@@ -8,7 +8,7 @@ import { Workspace } from "@/components/Workspace";
 import { ResizeDivider } from "@/components/ResizeDivider";
 import { TabBar } from "@/components/TabBar";
 import { PanelHeader } from "@/components/PanelHeader";
-import { ExportModal } from "@/components/ExportModal";
+import { PropertiesModal } from "@/components/PropertiesModal";
 import { PageStack } from "@/lib/types";
 import { releaseDoc } from "@/lib/pdfStore";
 import { releaseDocument } from "@/lib/mupdfClient";
@@ -16,6 +16,7 @@ import { ingestDocument, MAX_INGEST_BYTES } from "@/lib/pdfIngest";
 import { clearThumbnail } from "@/lib/thumbnailCache";
 import { normalizeRotation } from "@/lib/rotationUtils";
 import { exportMergedPdf, downloadPdf } from "@/lib/pdfExport";
+import { loadSavedMetadata } from "@/lib/pdfMetadata";
 import {
   reorderPageInStack,
   extractPageFromStack,
@@ -113,7 +114,7 @@ export function WorkbenchClient() {
   const [scrollToPageId, setScrollToPageId] = useState<string | null>(null);
   const [thumbnailVersions, setThumbnailVersions] = useState<Map<string, number>>(new Map());
   const [activeTab, setActiveTab] = useState<"documents" | "preview">("documents");
-  const [showExportModal, setShowExportModal] = useState(false);
+  const [showPropertiesModal, setShowPropertiesModal] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Warn before navigating away when documents are loaded
@@ -587,13 +588,19 @@ export function WorkbenchClient() {
     [handleFilesAdded]
   );
 
+  const handleExportAll = useCallback(async () => {
+    if (stacks.length === 0) return;
+    const bytes = await exportMergedPdf(stacks, loadSavedMetadata());
+    downloadPdf(bytes, "hermitpdf-merged.pdf");
+  }, [stacks]);
+
   const handleExportSelection = useCallback(async () => {
     if (selectedPageIds.size === 0) return;
     const filtered = stacks
       .map((s) => ({ ...s, pages: s.pages.filter((p) => selectedPageIds.has(p.id)) }))
       .filter((s) => s.pages.length > 0);
     if (filtered.length === 0) return;
-    const bytes = await exportMergedPdf(filtered);
+    const bytes = await exportMergedPdf(filtered, loadSavedMetadata());
     const name = filtered.length === 1 ? filtered[0].name : "selection.pdf";
     downloadPdf(bytes, name);
   }, [stacks, selectedPageIds]);
@@ -696,10 +703,11 @@ export function WorkbenchClient() {
         isExtracting={isExtracting}
         onRemoveSelected={handleRemoveSelected}
         removeSelectedDisabled={!hasSelection}
-        onExportAll={() => setShowExportModal(true)}
+        onExportAll={handleExportAll}
         onExportSelection={handleExportSelection}
         exportAllDisabled={stacks.length === 0}
         exportSelectionDisabled={selectedPageIds.size === 0}
+        onEditProperties={() => setShowPropertiesModal(true)}
       />
       {isNarrow && (
         <TabBar activeTab={activeTab} onTabChange={setActiveTab} />
@@ -742,10 +750,9 @@ export function WorkbenchClient() {
           </>
         )}
       </div>
-      {showExportModal && (
-        <ExportModal
-          stacks={stacks}
-          onClose={() => setShowExportModal(false)}
+      {showPropertiesModal && (
+        <PropertiesModal
+          onClose={() => setShowPropertiesModal(false)}
         />
       )}
     </>

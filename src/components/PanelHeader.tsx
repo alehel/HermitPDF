@@ -26,6 +26,7 @@ import {
   ImageIcon,
   EyeIcon,
   ChevronDownIcon,
+  InfoIcon,
 } from "./Icons";
 
 /* ------------------------------------------------------------------ */
@@ -128,6 +129,7 @@ export interface PanelHeaderProps {
   onExportSelection?: () => void;
   exportAllDisabled?: boolean;
   exportSelectionDisabled?: boolean;
+  onEditProperties?: () => void;
 }
 
 export function PanelHeader({
@@ -154,6 +156,7 @@ export function PanelHeader({
   onExportSelection,
   exportAllDisabled,
   exportSelectionDisabled,
+  onEditProperties,
 }: PanelHeaderProps) {
   const t = useTranslations("documentPanel");
 
@@ -234,6 +237,9 @@ export function PanelHeader({
               ))}
             </DropdownMenuContent>
           </DropdownMenu>
+          {onEditProperties && (
+            <TipButton icon={InfoIcon} label={t("properties")} onClick={onEditProperties} />
+          )}
         </div>
 
         <Separator orientation="vertical" className="mx-1 !h-6" />
