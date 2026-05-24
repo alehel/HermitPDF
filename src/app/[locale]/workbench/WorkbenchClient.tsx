@@ -29,6 +29,9 @@ import { useImageExtraction } from "@/hooks/useImageExtraction";
 
 const GRID_THRESHOLD = 500;
 
+// TODO(css-rotation): PdfThumbnail now applies rotation via CSS transform,
+// so a rotation change no longer invalidates the cached bitmap. This whole
+// function — and its call site in applyRestoredSnapshot — can be deleted.
 /** Compare rotation values between two stacks snapshots, clearing thumbnails for changed pages. */
 function reconcileThumbnails(prev: PageStack[], next: PageStack[]): string[] {
   const changed: string[] = [];
@@ -111,6 +114,9 @@ export function WorkbenchClient() {
   const [selectedPageIds, setSelectedPageIds] = useState<Set<string>>(new Set());
   const [anchorPageId, setAnchorPageId] = useState<string | null>(null);
   const [scrollToPageId, setScrollToPageId] = useState<string | null>(null);
+  // TODO(css-rotation): only mutated to force a rotation re-render. CSS handles
+  // rotation now — this state, its setter, and the `version` prop plumbing
+  // through PageListItem / StackList can be removed.
   const [thumbnailVersions, setThumbnailVersions] = useState<Map<string, number>>(new Map());
   const [activeTab, setActiveTab] = useState<"documents" | "preview">("documents");
   const [showExportModal, setShowExportModal] = useState(false);
@@ -526,6 +532,9 @@ export function WorkbenchClient() {
       ),
     }));
     commit({ stacks: nextStacks, expandedStackIds: expandedRef.current });
+    // TODO(css-rotation): no longer needed — CSS transform on the cached
+    // bitmap handles rotation. Drop this call (and the dep) to skip the
+    // re-rasterization storm when rotating a large selection.
     invalidateThumbnails(pageIds);
   }, [commit, invalidateThumbnails]);
 

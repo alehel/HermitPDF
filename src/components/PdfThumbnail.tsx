@@ -22,7 +22,8 @@ export function PdfThumbnail({
   const [dataUrl, setDataUrl] = useState<string | undefined>(() =>
     getThumbnail(pageRef.id)
   );
-  const [aspectRatio, setAspectRatio] = useState<number>(297 / 210); // default A4-ish
+  // Aspect ratio of the page at its natural (unrotated) orientation: height / width.
+  const [naturalAspectRatio, setNaturalAspectRatio] = useState<number>(297 / 210); // default A4-ish
 
   useEffect(() => {
     // Check cache — may have been updated externally
@@ -39,15 +40,18 @@ export function PdfThumbnail({
         await loadDocument(pageRef.sourceDocId);
         if (cancelled) return;
 
+        // Always rasterize at rotation 0 — display rotation is applied via CSS
+        // transform below, so rotating pages doesn't require a worker round-trip
+        // and the cached bitmap stays valid across rotation changes.
         const result = await renderThumbnail(
           pageRef.sourceDocId,
           pageRef.sourcePageIndex,
           width,
-          pageRef.rotation
+          0
         );
         if (cancelled) return;
 
-        setAspectRatio(result.aspectRatio);
+        setNaturalAspectRatio(result.aspectRatio);
         setThumbnail(pageRef.id, result.blobUrl);
         setDataUrl(result.blobUrl);
       } catch {
@@ -55,12 +59,10 @@ export function PdfThumbnail({
       }
     }
 
-    // If we already have a displayed thumbnail (e.g. stale after rotation),
-    // keep showing it while the new one renders in the background.
-    // This avoids a flash/broken-image between the old and new thumbnails.
+    // Already have a thumbnail — nothing to do. Rotation changes are handled
+    // via CSS transform on the existing bitmap, so no re-render is needed.
     if (dataUrl) {
-      doRender();
-      return () => { cancelled = true; };
+      return;
     }
 
     // First load — show placeholder and lazy-load via IntersectionObserver
@@ -86,20 +88,41 @@ export function PdfThumbnail({
       cancelled = true;
       observer.disconnect();
     };
-  }, [pageRef.id, pageRef.sourceDocId, pageRef.sourcePageIndex, pageRef.rotation, width, version, dataUrl]);
+  }, [pageRef.id, pageRef.sourceDocId, pageRef.sourcePageIndex, width, version, dataUrl]);
 
-  const height = Math.round(width * aspectRatio);
+  // Compute display dimensions so the rotated visual bounding box still fits
+  // in `width`. The img element keeps the unrotated bitmap's natural aspect;
+  // for 90/270 we shrink it so visual-width ends up equal to `width`.
+  const isRotated = pageRef.rotation % 180 !== 0;
+  const imgWidth = isRotated ? width / naturalAspectRatio : width;
+  const imgHeight = isRotated ? width : width * naturalAspectRatio;
+  const containerWidth = isRotated ? imgHeight : imgWidth;
+  const containerHeight = isRotated ? imgWidth : imgHeight;
 
   if (dataUrl) {
     return (
-      <img
-        src={dataUrl}
-        width={width}
-        height={height}
-        alt="Page thumbnail"
-        className={`rounded ${className}`}
-        style={{ width, height }}
-      />
+      <div
+        className={className}
+        style={{
+          width: containerWidth,
+          height: containerHeight,
+          position: "relative",
+        }}
+      >
+        <img
+          src={dataUrl}
+          alt="Page thumbnail"
+          className="rounded"
+          style={{
+            position: "absolute",
+            left: "50%",
+            top: "50%",
+            width: imgWidth,
+            height: imgHeight,
+            transform: `translate(-50%, -50%) rotate(${pageRef.rotation}deg)`,
+          }}
+        />
+      </div>
     );
   }
 
@@ -107,7 +130,7 @@ export function PdfThumbnail({
     <div
       ref={containerRef}
       className={`animate-pulse rounded bg-border ${className}`}
-      style={{ width, height }}
+      style={{ width: containerWidth, height: containerHeight }}
     />
   );
 }
