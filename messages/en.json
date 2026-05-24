@@ -80,7 +80,8 @@
     "author": "Author",
     "subject": "Subject",
     "keywords": "Keywords",
-    "keywordsHint": "Comma-separated",
+    "keywordsHint": "Press Enter or comma to add a keyword.",
+    "removeKeyword": "Remove {keyword}",
     "cancel": "Cancel",
     "save": "Save"
   },
