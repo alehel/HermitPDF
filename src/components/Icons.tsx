@@ -326,6 +326,19 @@ export function FilePlusIcon(props: IconProps) {
   );
 }
 
+export function MergeFilesIcon(props: IconProps) {
+  return (
+    <Icon size={72} strokeWidth={1.5} viewBox="0 0 28 28" {...props}>
+      {/* Back document — only the outline not hidden behind the front one */}
+      <path d="M11,19 H5 a2,2 0 0 1 -2,-2 V4 a2,2 0 0 1 2,-2 H12 L17,7 V9" />
+      <path d="M12,2 v5 h5" />
+      {/* Front document */}
+      <path d="M13,9 h7 l5,5 v10 a2,2 0 0 1 -2,2 h-10 a2,2 0 0 1 -2,-2 v-13 a2,2 0 0 1 2,-2 z" />
+      <path d="M20,9 v5 h5" />
+    </Icon>
+  );
+}
+
 export function RotateIcon(props: IconProps) {
   return <RotateRightIcon size={32} strokeWidth={1.5} {...props} />;
 }

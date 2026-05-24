@@ -5,6 +5,7 @@ import { type ReactNode, useCallback, useRef } from "react";
 interface UseFileInputOptions {
   multiple?: boolean;
   ariaLabel?: string;
+  accept?: string;
 }
 
 export function useFileInput(
@@ -31,7 +32,7 @@ export function useFileInput(
     <input
       ref={fileInputRef}
       type="file"
-      accept=".pdf,application/pdf"
+      accept={options?.accept ?? ".pdf,application/pdf"}
       multiple={options?.multiple ?? false}
       className="hidden"
       onChange={handleFileInput}
