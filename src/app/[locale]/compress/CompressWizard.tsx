@@ -15,6 +15,7 @@ import { releaseWizardFile } from "@/lib/releaseWizardFile";
 import { DEFAULT_COMPRESS_CONFIG, compressedFilename } from "@/lib/compress";
 import { compressPdf, renderCompressedPreview } from "@/lib/mupdfClient";
 import { downloadPdf } from "@/lib/pdfExport";
+import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 import { useDelayedFlag } from "@/hooks/useDelayedFlag";
 import { useDropZone } from "@/hooks/useDropZone";
 import { useFileInput } from "@/hooks/useFileInput";
@@ -65,6 +66,19 @@ export function CompressWizard() {
   const [previewImageData, setPreviewImageData] = useState<ImageData | null>(null);
   const [isPreviewLoading, setIsPreviewLoading] = useState(false);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  // Bumped on every preview request so superseded in-flight renders can be dropped.
+  const reqIdRef = useRef(0);
+
+  // Debounced inputs drive the auto-preview effect. The manual button uses the
+  // immediate values to bypass the debounce.
+  const debouncedConfig = useDebouncedValue(config);
+  const debouncedFile = useDebouncedValue(file);
+  const debouncedPreviewPage = useDebouncedValue(previewPage);
+
+  const showPreviewIndicator = useDelayedFlag(isPreviewLoading, {
+    showAfterMs: 300,
+    minDurationMs: 400,
+  });
 
   const fileRef = useRef(file);
   fileRef.current = file;
@@ -146,21 +160,34 @@ export function CompressWizard() {
   }, [file, result]);
 
   /* ---- Preview ---- */
-  const handlePreview = useCallback(async () => {
-    if (!file) return;
-    setIsPreviewLoading(true);
-    try {
-      const imageData = await renderCompressedPreview(
-        file.sourceDocId,
-        previewPage - 1,
-        config,
-        144
-      );
-      setPreviewImageData(imageData);
-    } finally {
-      setIsPreviewLoading(false);
-    }
-  }, [file, previewPage, config]);
+  const runPreview = useCallback(
+    async (target: WizardFile | null, pageNum: number, cfg: CompressConfig) => {
+      if (!target) {
+        setPreviewImageData(null);
+        return;
+      }
+      const myReqId = ++reqIdRef.current;
+      setIsPreviewLoading(true);
+      try {
+        const imageData = await renderCompressedPreview(
+          target.sourceDocId,
+          pageNum - 1,
+          cfg,
+          144
+        );
+        if (reqIdRef.current !== myReqId) return; // superseded
+        setPreviewImageData(imageData);
+      } finally {
+        if (reqIdRef.current === myReqId) setIsPreviewLoading(false);
+      }
+    },
+    []
+  );
+
+  // Auto-trigger preview on debounced input changes.
+  useEffect(() => {
+    runPreview(debouncedFile, debouncedPreviewPage, debouncedConfig);
+  }, [debouncedFile, debouncedPreviewPage, debouncedConfig, runPreview]);
 
   /* ---- Paint preview to canvas ---- */
   useEffect(() => {
@@ -465,7 +492,7 @@ export function CompressWizard() {
                     <span className="text-xs text-muted-foreground">/ {totalPages}</span>
                     <button
                       type="button"
-                      onClick={handlePreview}
+                      onClick={() => runPreview(file, previewPage, config)}
                       disabled={isPreviewLoading}
                       className="ml-auto rounded-lg bg-accent px-3 py-1.5 text-xs font-medium text-foreground transition-all hover:bg-accent/80 disabled:opacity-60"
                     >
@@ -473,22 +500,30 @@ export function CompressWizard() {
                     </button>
                   </div>
 
-                  {previewImageData ? (
-                    <div
-                      className="rounded-lg border border-border"
-                      style={checkerboardStyle}
-                    >
-                      <canvas
-                        ref={canvasRef}
-                        className="w-full rounded-lg"
-                        style={{ maxHeight: "500px", objectFit: "contain", display: "block" }}
-                      />
-                    </div>
-                  ) : (
-                    <div className="flex h-48 items-center justify-center rounded-lg border border-dashed border-border text-xs text-muted-foreground">
-                      {t("previewHint")}
-                    </div>
-                  )}
+                  <div className="relative">
+                    {previewImageData ? (
+                      <div
+                        className="rounded-lg border border-border"
+                        style={checkerboardStyle}
+                      >
+                        <canvas
+                          ref={canvasRef}
+                          className="w-full rounded-lg"
+                          style={{ maxHeight: "500px", objectFit: "contain", display: "block" }}
+                        />
+                      </div>
+                    ) : (
+                      <div className="flex h-48 items-center justify-center rounded-lg border border-dashed border-border text-xs text-muted-foreground">
+                        {showPreviewIndicator ? t("updating") : t("previewHint")}
+                      </div>
+                    )}
+                    {previewImageData && showPreviewIndicator && (
+                      <div className="absolute top-2 right-2 flex items-center gap-1.5 rounded-full bg-background/90 px-2 py-1 text-[10px] font-medium text-muted-foreground shadow-sm backdrop-blur-sm">
+                        <span className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-muted-foreground border-t-transparent" />
+                        <span>{t("updating")}</span>
+                      </div>
+                    )}
+                  </div>
               </div>
             </div>
           </div>
