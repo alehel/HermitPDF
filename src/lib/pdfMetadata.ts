@@ -2,12 +2,24 @@ import { PdfMetadata } from "./types";
 
 const STORAGE_KEY = "pw-export-metadata";
 
-export function loadSavedMetadata(): PdfMetadata {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (raw) return JSON.parse(raw);
-  } catch {}
+function emptyMetadata(): PdfMetadata {
   return { title: "", author: "", subject: "", keywords: "" };
+}
+
+export function loadSavedMetadata(): PdfMetadata {
+  let raw: string | null;
+  try {
+    raw = localStorage.getItem(STORAGE_KEY);
+  } catch {
+    return emptyMetadata();
+  }
+  if (!raw) return emptyMetadata();
+  try {
+    return JSON.parse(raw);
+  } catch (err) {
+    console.warn("Failed to parse saved PDF metadata; using defaults.", err);
+    return emptyMetadata();
+  }
 }
 
 export function saveMetadata(metadata: PdfMetadata): boolean {
