@@ -7,6 +7,7 @@ import { loadSavedMetadata, saveMetadata } from "@/lib/pdfMetadata";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { KeywordsInput, parseChips, joinChips } from "./KeywordsInput";
 import {
   Dialog,
   DialogContent,
@@ -23,6 +24,7 @@ interface PropertiesModalProps {
 export function PropertiesModal({ onClose, onSaveFailed }: PropertiesModalProps) {
   const t = useTranslations("propertiesModal");
   const [metadata, setMetadata] = useState<PdfMetadata>(loadSavedMetadata);
+  const [keywordDraft, setKeywordDraft] = useState("");
   const firstInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -30,9 +32,13 @@ export function PropertiesModal({ onClose, onSaveFailed }: PropertiesModalProps)
   }, []);
 
   const handleSave = useCallback(() => {
-    if (!saveMetadata(metadata)) onSaveFailed();
+    const trimmed = keywordDraft.trim();
+    const final: PdfMetadata = trimmed
+      ? { ...metadata, keywords: joinChips([...parseChips(metadata.keywords), trimmed]) }
+      : metadata;
+    if (!saveMetadata(final)) onSaveFailed();
     onClose();
-  }, [metadata, onClose, onSaveFailed]);
+  }, [metadata, keywordDraft, onClose, onSaveFailed]);
 
   function update(field: keyof PdfMetadata, value: string) {
     setMetadata((prev) => ({ ...prev, [field]: value }));
@@ -76,10 +82,13 @@ export function PropertiesModal({ onClose, onSaveFailed }: PropertiesModalProps)
 
           <div className="space-y-1.5">
             <Label htmlFor="pdf-keywords">{t("keywords")}</Label>
-            <Input
+            <KeywordsInput
               id="pdf-keywords"
               value={metadata.keywords}
-              onChange={(e) => update("keywords", e.target.value)}
+              onChange={(next) => update("keywords", next)}
+              draft={keywordDraft}
+              onDraftChange={setKeywordDraft}
+              removeLabel={(keyword) => t("removeKeyword", { keyword })}
             />
             <p className="text-xs text-muted-foreground">{t("keywordsHint")}</p>
           </div>
