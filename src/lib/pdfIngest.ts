@@ -5,6 +5,7 @@ import {
   loadDocument,
   needsPassword,
   releaseDocument,
+  setDocMagic,
 } from "./mupdfClient";
 
 export interface IngestResult {
@@ -36,9 +37,12 @@ export async function ingestDocument(
   source: Blob,
   name: string,
   fileSize: number,
-  options?: { allowProtected?: boolean }
+  options?: { allowProtected?: boolean; magic?: string }
 ): Promise<IngestResult> {
   const sourceDocId = crypto.randomUUID();
+  if (options?.magic) {
+    setDocMagic(sourceDocId, options.magic);
+  }
   await storeDoc(sourceDocId, source);
 
   try {

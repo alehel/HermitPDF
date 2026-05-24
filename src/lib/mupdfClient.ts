@@ -28,6 +28,11 @@ const handles = new Map<string, number>(); // insertion-order = LRU order
 // by the worker before the second call, and the second call's getDoc(handle)
 // throws "No document for handle N".
 const inFlightOps = new Map<string, Set<Promise<unknown>>>();
+const docMagic = new Map<string, string>();
+
+export function setDocMagic(docId: string, magic: string): void {
+  docMagic.set(docId, magic);
+}
 
 function trackOp<T>(docId: string, p: Promise<T>): Promise<T> {
   let set = inFlightOps.get(docId);
@@ -76,7 +81,7 @@ async function ensureLoaded(docId: string): Promise<number> {
   if (!data) throw new Error(`No document data for ${docId}`);
 
   const w = getWorker();
-  const handle = await w.openDocument(Comlink.transfer(data, [data]));
+  const handle = await w.openDocument(Comlink.transfer(data, [data]), docMagic.get(docId));
   handles.set(docId, handle);
   return handle;
 }
@@ -151,6 +156,7 @@ export async function releaseDocument(docId: string): Promise<void> {
     getWorker().releaseDocument(handle);
     handles.delete(docId);
   }
+  docMagic.delete(docId);
 }
 
 /**

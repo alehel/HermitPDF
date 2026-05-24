@@ -1,5 +1,9 @@
 import { FilePlusIcon } from "./Icons";
 
+interface IconProps {
+  className?: string;
+}
+
 interface DropZoneProps {
   title: string;
   subtitle: string;
@@ -11,6 +15,7 @@ interface DropZoneProps {
   isDragOver?: boolean;
   fill?: boolean;
   autoFocus?: boolean;
+  icon?: React.ComponentType<IconProps>;
 }
 
 export function DropZone({
@@ -24,6 +29,7 @@ export function DropZone({
   isDragOver = false,
   fill = false,
   autoFocus = false,
+  icon: Icon = FilePlusIcon,
 }: DropZoneProps) {
   return (
     <div className={`flex flex-col items-center justify-center ${fill ? "h-full" : ""}`}>
@@ -44,7 +50,7 @@ export function DropZone({
             : "border-border bg-card/50 hover:border-primary/40 hover:bg-accent/20"
         }`}
       >
-        <FilePlusIcon
+        <Icon
           className={`transition-colors ${
             isDragOver
               ? "text-primary/50"

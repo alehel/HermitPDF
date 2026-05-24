@@ -750,10 +750,48 @@ function buildCompressSaveOptions(config: CompressWorkerConfig): Record<string, 
   };
 }
 
+function imageToPdf(
+  mupdf: typeof import("mupdf"),
+  data: ArrayBuffer
+): MupdfPDFDocument {
+  const img = new mupdf.Image(data);
+  const xRes = img.getXResolution() || 72;
+  const yRes = img.getYResolution() || 72;
+  const w = (img.getWidth() / xRes) * 72;
+  const h = (img.getHeight() / yRes) * 72;
+
+  const pdf = new mupdf.PDFDocument();
+  const imgRef = pdf.addImage(img);
+  img.destroy();
+
+  const resources = pdf.addObject(
+    pdf.newDictionary()
+  );
+  const xobjects = pdf.newDictionary();
+  xobjects.put("Img", imgRef);
+  resources.put("XObject", xobjects);
+
+  const contents = `q ${w} 0 0 ${h} 0 0 cm /Img Do Q`;
+  const pageObj = pdf.addPage([0, 0, w, h], 0, resources, contents);
+  pdf.insertPage(-1, pageObj);
+
+  return pdf;
+}
+
 const api = {
-  async openDocument(data: ArrayBuffer): Promise<number> {
+  async openDocument(
+    data: ArrayBuffer,
+    magic: string = "application/pdf"
+  ): Promise<number> {
     const mupdf = await getMupdf();
-    const doc = mupdf.Document.openDocument(data, "application/pdf");
+
+    let doc;
+    if (magic.startsWith("image/")) {
+      doc = imageToPdf(mupdf, data);
+    } else {
+      doc = mupdf.Document.openDocument(data, magic);
+    }
+
     const handle = nextHandle++;
     documents.set(handle, { doc, mupdf });
     return handle;
