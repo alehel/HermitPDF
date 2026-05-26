@@ -99,16 +99,6 @@ export async function getPageCount(docId: string): Promise<number> {
   })());
 }
 
-/** [width, height] in PDF points for every page. Cheap — no rasterization. */
-export async function getAllPageBounds(
-  docId: string
-): Promise<[number, number][]> {
-  return trackOp(docId, (async () => {
-    const handle = await ensureLoaded(docId);
-    return getWorker().getAllPageBounds(handle) as Promise<[number, number][]>;
-  })());
-}
-
 /**
  * Renders a page as ImageData for direct canvas painting.
  * pageIndex is 0-based. Rotation is applied at render time.
