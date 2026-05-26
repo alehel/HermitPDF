@@ -2,12 +2,12 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslations } from "next-intl";
-import { DownloadIcon } from "./Icons";
-import { PageStack, PdfMetadata } from "@/lib/types";
-import { exportMergedPdf, downloadPdf } from "@/lib/pdfExport";
+import { PdfMetadata } from "@/lib/types";
+import { loadSavedMetadata, saveMetadata } from "@/lib/pdfMetadata";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { KeywordsInput, parseChips, joinChips } from "./KeywordsInput";
 import {
   Dialog,
   DialogContent,
@@ -16,49 +16,29 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 
-const STORAGE_KEY = "pw-export-metadata";
-
-function loadSavedMetadata(): PdfMetadata {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (raw) return JSON.parse(raw);
-  } catch {}
-  return { title: "", author: "", subject: "", keywords: "" };
-}
-
-function saveMetadata(metadata: PdfMetadata) {
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(metadata));
-  } catch {}
-}
-
-interface ExportModalProps {
-  stacks: PageStack[];
+interface PropertiesModalProps {
   onClose: () => void;
+  onSaveFailed: () => void;
 }
 
-export function ExportModal({ stacks, onClose }: ExportModalProps) {
-  const t = useTranslations("exportModal");
-  const tWorkspace = useTranslations("workspace");
+export function PropertiesModal({ onClose, onSaveFailed }: PropertiesModalProps) {
+  const t = useTranslations("propertiesModal");
   const [metadata, setMetadata] = useState<PdfMetadata>(loadSavedMetadata);
-  const [exporting, setExporting] = useState(false);
+  const [keywordDraft, setKeywordDraft] = useState("");
   const firstInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     firstInputRef.current?.focus();
   }, []);
 
-  const handleExport = useCallback(async () => {
-    setExporting(true);
-    try {
-      saveMetadata(metadata);
-      const data = await exportMergedPdf(stacks, metadata);
-      downloadPdf(data, "hermitpdf-merged.pdf");
-      onClose();
-    } finally {
-      setExporting(false);
-    }
-  }, [stacks, metadata, onClose]);
+  const handleSave = useCallback(() => {
+    const trimmed = keywordDraft.trim();
+    const final: PdfMetadata = trimmed
+      ? { ...metadata, keywords: joinChips([...parseChips(metadata.keywords), trimmed]) }
+      : metadata;
+    if (!saveMetadata(final)) onSaveFailed();
+    onClose();
+  }, [metadata, keywordDraft, onClose, onSaveFailed]);
 
   function update(field: keyof PdfMetadata, value: string) {
     setMetadata((prev) => ({ ...prev, [field]: value }));
@@ -102,10 +82,13 @@ export function ExportModal({ stacks, onClose }: ExportModalProps) {
 
           <div className="space-y-1.5">
             <Label htmlFor="pdf-keywords">{t("keywords")}</Label>
-            <Input
+            <KeywordsInput
               id="pdf-keywords"
               value={metadata.keywords}
-              onChange={(e) => update("keywords", e.target.value)}
+              onChange={(next) => update("keywords", next)}
+              draft={keywordDraft}
+              onDraftChange={setKeywordDraft}
+              removeLabel={(keyword) => t("removeKeyword", { keyword })}
             />
             <p className="text-xs text-muted-foreground">{t("keywordsHint")}</p>
           </div>
@@ -115,9 +98,8 @@ export function ExportModal({ stacks, onClose }: ExportModalProps) {
           <Button variant="ghost" size="sm" onClick={onClose}>
             {t("cancel")}
           </Button>
-          <Button size="sm" disabled={exporting} onClick={handleExport}>
-            <DownloadIcon />
-            {exporting ? tWorkspace("exporting") : tWorkspace("export")}
+          <Button size="sm" onClick={handleSave}>
+            {t("save")}
           </Button>
         </DialogFooter>
       </DialogContent>

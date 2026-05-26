@@ -44,9 +44,11 @@
     "export": "Export",
     "exportSelection": "Export selection as PDF",
     "exportAll": "Export PDF",
+    "properties": "Document properties",
     "viewGroup": "View",
     "compact": "Compact",
-    "oversizedFiles": "Files too large to load (max 1 GB): {files}"
+    "oversizedFiles": "Files too large to load (max 1 GB): {files}",
+    "metadataSaveFailed": "Couldn't save document properties — browser storage may be disabled (e.g. private browsing)."
   },
   "documentItem": {
     "remove": "Remove",
@@ -72,14 +74,16 @@
     "previewTab": "Preview",
     "saveImage": "Save image"
   },
-  "exportModal": {
-    "title": "Export Settings",
+  "propertiesModal": {
+    "title": "Document Properties",
     "pdfTitle": "Title",
     "author": "Author",
     "subject": "Subject",
     "keywords": "Keywords",
-    "keywordsHint": "Comma-separated",
-    "cancel": "Cancel"
+    "keywordsHint": "Press Enter or comma to add a keyword.",
+    "removeKeyword": "Remove {keyword}",
+    "cancel": "Cancel",
+    "save": "Save"
   },
   "error": {
     "title": "Something went wrong",

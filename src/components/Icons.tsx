@@ -392,6 +392,16 @@ export function PlusCircleIcon(props: IconProps) {
   );
 }
 
+export function InfoIcon(props: IconProps) {
+  return (
+    <Icon size={16} strokeWidth={2} {...props}>
+      <circle cx="12" cy="12" r="10" />
+      <line x1="12" y1="11" x2="12" y2="16" />
+      <circle cx="12" cy="8" r="0.5" fill="currentColor" stroke="currentColor" />
+    </Icon>
+  );
+}
+
 export function CodebergIcon({ className, style }: { className?: string; style?: React.CSSProperties }) {
   return (
     <svg
