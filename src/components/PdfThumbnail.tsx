@@ -10,6 +10,16 @@ interface PdfThumbnailProps {
   width?: number;
   className?: string;
   version?: number;
+  /**
+   * Optional height/width ratio for the slot. When provided, every thumbnail
+   * uses a slot of this exact shape — the img inside scales to fit while
+   * preserving its own aspect ratio. Use when rendering a grid of mixed-
+   * orientation pages and the caller wants uniform card sizes (e.g. the
+   * rotate wizard, which picks a portrait-shaped box that fits every page
+   * when oriented to portrait). When omitted, the slot uses the page's
+   * natural aspect ratio — fine for single-thumbnail callers.
+   */
+  boxAspectRatio?: number;
 }
 
 export function PdfThumbnail({
@@ -17,6 +27,7 @@ export function PdfThumbnail({
   width = 120,
   className = "",
   version,
+  boxAspectRatio,
 }: PdfThumbnailProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [dataUrl, setDataUrl] = useState<string | undefined>(() =>
@@ -90,20 +101,21 @@ export function PdfThumbnail({
     };
   }, [pageRef.id, pageRef.sourceDocId, pageRef.sourcePageIndex, width, version, dataUrl]);
 
-  // The slot is sized at the page's natural orientation, so at rotation 0
-  // the thumbnail fills the slot. Rotation doesn't resize the slot (keeping
-  // surrounding layout stable — e.g. rotate buttons don't jump on click) —
-  // the rotated img is scaled down to fit inside the same slot.
+  // Slot dimensions. With `boxAspectRatio`, every slot in the grid has the
+  // same shape — the caller picks a ratio that fits each page in its portrait
+  // orientation. Without it, the slot mirrors this page's natural orientation.
+  // Either way the slot doesn't change on rotation, so surrounding layout
+  // (e.g. rotate buttons) stays stable.
   const isRotated = pageRef.rotation % 180 !== 0;
   const containerWidth = width;
-  const containerHeight = width * naturalAspectRatio;
-  // After rotation, the visual bounding box is (imgHeight × imgWidth). Fit
-  // it inside (containerWidth × containerHeight) while preserving the bitmap's
-  // natural aspect ratio. For rotation 0, the img fills the slot.
-  const imgHeight = isRotated
-    ? Math.min(containerWidth, containerHeight * naturalAspectRatio)
-    : containerHeight;
-  const imgWidth = isRotated ? imgHeight / naturalAspectRatio : containerWidth;
+  const containerHeight = width * (boxAspectRatio ?? naturalAspectRatio);
+  // Scale the img to fit inside the slot, preserving its natural aspect ratio
+  // and accounting for rotation. The img element's width/height are the
+  // pre-rotation dimensions; CSS rotate(N°) swaps the visual bbox.
+  const imgWidth = isRotated
+    ? Math.min(containerWidth / naturalAspectRatio, containerHeight)
+    : Math.min(containerWidth, containerHeight / naturalAspectRatio);
+  const imgHeight = imgWidth * naturalAspectRatio;
 
   if (dataUrl) {
     return (

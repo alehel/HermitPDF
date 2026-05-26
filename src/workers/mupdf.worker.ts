@@ -802,6 +802,24 @@ const api = {
     return doc.countPages();
   },
 
+  /**
+   * Return [width, height] in PDF points for every page. Cheap — just walks
+   * page objects for their bounds, no rasterization. Used to pick a uniform
+   * thumbnail box that fits every page in its portrait orientation.
+   */
+  getAllPageBounds(handle: number): [number, number][] {
+    const { doc } = getDoc(handle);
+    const count = doc.countPages();
+    const out: [number, number][] = [];
+    for (let i = 0; i < count; i++) {
+      const page = doc.loadPage(i);
+      const b = page.getBounds();
+      out.push([b[2] - b[0], b[3] - b[1]]);
+      page.destroy();
+    }
+    return out;
+  },
+
   renderPage(
     handle: number,
     pageIndex: number,
