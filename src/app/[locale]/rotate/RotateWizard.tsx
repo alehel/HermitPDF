@@ -13,7 +13,6 @@ import { PageStack, WizardFile } from "@/lib/types";
 import { formatSize } from "@/lib/formatSize";
 import { releaseWizardFile } from "@/lib/releaseWizardFile";
 import { exportMergedPdf, downloadPdf } from "@/lib/pdfExport";
-import { getAllPageBounds } from "@/lib/mupdfClient";
 import { normalizeRotation } from "@/lib/rotationUtils";
 import { useDelayedFlag } from "@/hooks/useDelayedFlag";
 import { useDropZone } from "@/hooks/useDropZone";
@@ -31,11 +30,6 @@ export function RotateWizard() {
   const [stack, setStack] = useState<PageStack | null>(null);
   const [isExporting, setIsExporting] = useState(false);
   const showOverlay = useDelayedFlag(isExporting);
-  // Uniform thumbnail-box ratio for the grid: the largest portrait ratio
-  // (longer/shorter) across all pages. Picking the max means every page
-  // fits when oriented to portrait, so the grid is uniform and rotating
-  // a page to its portrait orientation always fills the box.
-  const [boxAspectRatio, setBoxAspectRatio] = useState<number | undefined>();
 
   const fileRef = useRef(file);
   fileRef.current = file;
@@ -81,32 +75,6 @@ export function RotateWizard() {
       if (f) releaseWizardFile(f);
     };
   }, []);
-
-  /* ---- Pick a uniform box ratio for the thumbnail grid ---- */
-  useEffect(() => {
-    if (!file) {
-      setBoxAspectRatio(undefined);
-      return;
-    }
-    let cancelled = false;
-    (async () => {
-      try {
-        const bounds = await getAllPageBounds(file.sourceDocId);
-        if (cancelled || bounds.length === 0) return;
-        let maxPortraitRatio = 0;
-        for (const [w, h] of bounds) {
-          if (w <= 0 || h <= 0) continue;
-          const r = Math.max(h / w, w / h);
-          if (r > maxPortraitRatio) maxPortraitRatio = r;
-        }
-        if (maxPortraitRatio > 0) setBoxAspectRatio(maxPortraitRatio);
-      } catch {
-        // Doc may have been released — leave boxAspectRatio undefined and
-        // thumbnails fall back to per-page natural slots.
-      }
-    })();
-    return () => { cancelled = true; };
-  }, [file]);
 
   /* ---- Remove the file ---- */
   const handleRemove = useCallback(() => {
@@ -247,7 +215,14 @@ export function RotateWizard() {
                   className="group/page flex flex-col items-center gap-2 rounded-xl border border-border bg-card p-3"
                 >
                   <div className="flex w-full items-center justify-center" style={{ minHeight: 140 }}>
-                    <PdfThumbnail pageRef={page} width={120} boxAspectRatio={boxAspectRatio} />
+                    {/* Square box: only ratio that treats both rotations
+                        equally — for any page, rotation 0 vs 90 produce
+                        the same-sized visual (just on a different axis),
+                        so no rotation looks "squished" relative to another.
+                        Mixed-aspect docs render uniformly; the trade-off
+                        is portrait pages don't reach their full natural
+                        height. */}
+                    <PdfThumbnail pageRef={page} width={120} boxAspectRatio={1} />
                   </div>
                   <div className="flex w-full items-center justify-between">
                     <span className="text-xs text-muted-foreground">
