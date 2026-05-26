@@ -90,18 +90,20 @@ export function PdfThumbnail({
     };
   }, [pageRef.id, pageRef.sourceDocId, pageRef.sourcePageIndex, width, version, dataUrl]);
 
-  // Compute display dimensions so the rotated visual bounding box still fits
-  // in `width`. The img element keeps the unrotated bitmap's natural aspect;
-  // for 90/270 we shrink it so visual-width ends up equal to `width`.
+  // The slot is sized at the page's natural orientation, so at rotation 0
+  // the thumbnail fills the slot. Rotation doesn't resize the slot (keeping
+  // surrounding layout stable — e.g. rotate buttons don't jump on click) —
+  // the rotated img is scaled down to fit inside the same slot.
   const isRotated = pageRef.rotation % 180 !== 0;
-  const imgWidth = isRotated ? width / naturalAspectRatio : width;
-  const imgHeight = isRotated ? width : width * naturalAspectRatio;
-  // Reserve a slot sized for the taller of the two possible orientations so
-  // rotation doesn't shift surrounding layout (e.g. the rotate buttons jumping
-  // up when a portrait thumbnail is rotated to landscape). The img is
-  // absolutely positioned and centered, so it floats inside the stable slot.
   const containerWidth = width;
-  const containerHeight = width * Math.max(naturalAspectRatio, 1 / naturalAspectRatio);
+  const containerHeight = width * naturalAspectRatio;
+  // After rotation, the visual bounding box is (imgHeight × imgWidth). Fit
+  // it inside (containerWidth × containerHeight) while preserving the bitmap's
+  // natural aspect ratio. For rotation 0, the img fills the slot.
+  const imgHeight = isRotated
+    ? Math.min(containerWidth, containerHeight * naturalAspectRatio)
+    : containerHeight;
+  const imgWidth = isRotated ? imgHeight / naturalAspectRatio : containerWidth;
 
   if (dataUrl) {
     return (
