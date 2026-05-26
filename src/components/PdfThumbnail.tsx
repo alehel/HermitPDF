@@ -96,8 +96,12 @@ export function PdfThumbnail({
   const isRotated = pageRef.rotation % 180 !== 0;
   const imgWidth = isRotated ? width / naturalAspectRatio : width;
   const imgHeight = isRotated ? width : width * naturalAspectRatio;
-  const containerWidth = isRotated ? imgHeight : imgWidth;
-  const containerHeight = isRotated ? imgWidth : imgHeight;
+  // Reserve a slot sized for the taller of the two possible orientations so
+  // rotation doesn't shift surrounding layout (e.g. the rotate buttons jumping
+  // up when a portrait thumbnail is rotated to landscape). The img is
+  // absolutely positioned and centered, so it floats inside the stable slot.
+  const containerWidth = width;
+  const containerHeight = width * Math.max(naturalAspectRatio, 1 / naturalAspectRatio);
 
   if (dataUrl) {
     return (
