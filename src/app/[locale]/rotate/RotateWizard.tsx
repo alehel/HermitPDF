@@ -12,7 +12,6 @@ import { PdfThumbnail } from "@/components/PdfThumbnail";
 import { PageStack, WizardFile } from "@/lib/types";
 import { formatSize } from "@/lib/formatSize";
 import { releaseWizardFile } from "@/lib/releaseWizardFile";
-import { clearThumbnail } from "@/lib/thumbnailCache";
 import { exportMergedPdf, downloadPdf } from "@/lib/pdfExport";
 import { normalizeRotation } from "@/lib/rotationUtils";
 import { useDelayedFlag } from "@/hooks/useDelayedFlag";
@@ -87,7 +86,6 @@ export function RotateWizard() {
 
   /* ---- Rotate a single page ---- */
   const handleRotatePage = useCallback((pageId: string, delta: number) => {
-    clearThumbnail(pageId);
     setStack((prev) => {
       if (!prev) return prev;
       return {
@@ -105,7 +103,6 @@ export function RotateWizard() {
   const handleRotateAll = useCallback((delta: number) => {
     setStack((prev) => {
       if (!prev) return prev;
-      for (const p of prev.pages) clearThumbnail(p.id);
       return {
         ...prev,
         pages: prev.pages.map((p) => ({
@@ -218,7 +215,14 @@ export function RotateWizard() {
                   className="group/page flex flex-col items-center gap-2 rounded-xl border border-border bg-card p-3"
                 >
                   <div className="flex w-full items-center justify-center" style={{ minHeight: 140 }}>
-                    <PdfThumbnail pageRef={page} width={120} />
+                    {/* Square box: only ratio that treats both rotations
+                        equally — for any page, rotation 0 vs 90 produce
+                        the same-sized visual (just on a different axis),
+                        so no rotation looks "squished" relative to another.
+                        Mixed-aspect docs render uniformly; the trade-off
+                        is portrait pages don't reach their full natural
+                        height. */}
+                    <PdfThumbnail pageRef={page} width={120} boxAspectRatio={1} />
                   </div>
                   <div className="flex w-full items-center justify-between">
                     <span className="text-xs text-muted-foreground">
