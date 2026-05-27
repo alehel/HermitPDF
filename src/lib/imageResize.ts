@@ -6,16 +6,27 @@
  * paper size at a chosen DPI. The cap is a simple ceiling on the longer / shorter
  * pixel dimensions — orientation is matched to the image aspect so a landscape
  * photo gets the landscape variant of the page.
+ *
+ * "Original" is a sentinel page size meaning "don't cap" — it's the default
+ * for new resize configs, paired with the master "recompress" toggle so the
+ * user can re-encode images without changing their dimensions.
  */
 
-export type PageSizeKey = "A5" | "A4" | "Letter" | "A3" | "Legal";
+export type PageSizeKey = "Original" | "A5" | "A4" | "Letter" | "A3" | "Legal";
 export type DpiPreset = 72 | 96 | 150 | 300;
 
-export const PAGE_SIZE_KEYS: PageSizeKey[] = ["A5", "A4", "Letter", "A3", "Legal"];
+export const PAGE_SIZE_KEYS: PageSizeKey[] = [
+  "Original",
+  "A5",
+  "A4",
+  "Letter",
+  "A3",
+  "Legal",
+];
 export const DPI_PRESETS: DpiPreset[] = [72, 96, 150, 300];
 
 /** Page sizes in millimetres (portrait orientation: short × long). */
-const PAGE_SIZES_MM: Record<PageSizeKey, { shortMm: number; longMm: number }> = {
+const PAGE_SIZES_MM: Record<Exclude<PageSizeKey, "Original">, { shortMm: number; longMm: number }> = {
   A5: { shortMm: 148, longMm: 210 },
   A4: { shortMm: 210, longMm: 297 },
   Letter: { shortMm: 8.5 * 25.4, longMm: 11 * 25.4 },
@@ -26,18 +37,24 @@ const PAGE_SIZES_MM: Record<PageSizeKey, { shortMm: number; longMm: number }> = 
 const MM_PER_INCH = 25.4;
 
 export interface ResizeConfig {
-  enabled: boolean;
   pageSize: PageSizeKey;
   dpi: DpiPreset;
 }
 
 export const DEFAULT_RESIZE_CONFIG: ResizeConfig = {
-  enabled: false,
-  pageSize: "A4",
+  pageSize: "Original",
   dpi: 150,
 };
 
-export function pageSizeInPoints(pageSize: PageSizeKey): { shortPt: number; longPt: number } {
+/** True iff this config actually caps pixel dimensions (pageSize is a real paper). */
+export function isResizeActive(config: ResizeConfig): boolean {
+  return config.pageSize !== "Original";
+}
+
+export function pageSizeInPoints(pageSize: Exclude<PageSizeKey, "Original">): {
+  shortPt: number;
+  longPt: number;
+} {
   const { shortMm, longMm } = PAGE_SIZES_MM[pageSize];
   return {
     shortPt: (shortMm / MM_PER_INCH) * 72,
@@ -46,28 +63,24 @@ export function pageSizeInPoints(pageSize: PageSizeKey): { shortPt: number; long
 }
 
 /**
- * Max pixel dimensions a single image may have at the given page size + DPI.
- * Returned as { shortPx, longPx } so the caller can match against image aspect.
- */
-export function maxPixelsForResize(config: ResizeConfig): { shortPx: number; longPx: number } {
-  const { shortMm, longMm } = PAGE_SIZES_MM[config.pageSize];
-  return {
-    shortPx: Math.round((shortMm / MM_PER_INCH) * config.dpi),
-    longPx: Math.round((longMm / MM_PER_INCH) * config.dpi),
-  };
-}
-
-/**
  * Compute the resized pixel dimensions for an image of (srcW × srcH), capped
  * by the page-size + DPI cap and oriented to match the image's own aspect.
- * Returns the same dimensions if the image already fits.
+ * Returns the same dimensions if the image already fits, or always if the
+ * pageSize is "Original".
  */
 export function fitWithinResizeCap(
   srcW: number,
   srcH: number,
   config: ResizeConfig
 ): { width: number; height: number; scaled: boolean } {
-  const { shortPx, longPx } = maxPixelsForResize(config);
+  if (config.pageSize === "Original") {
+    return { width: srcW, height: srcH, scaled: false };
+  }
+
+  const { shortMm, longMm } = PAGE_SIZES_MM[config.pageSize];
+  const shortPx = Math.round((shortMm / MM_PER_INCH) * config.dpi);
+  const longPx = Math.round((longMm / MM_PER_INCH) * config.dpi);
+
   const imageIsLandscape = srcW >= srcH;
   const maxW = imageIsLandscape ? longPx : shortPx;
   const maxH = imageIsLandscape ? shortPx : longPx;
@@ -100,7 +113,6 @@ export function imageProcessConfigsEqual(a: ImageProcessConfig, b: ImageProcessC
   return (
     a.recompress === b.recompress &&
     a.quality === b.quality &&
-    a.resize.enabled === b.resize.enabled &&
     a.resize.pageSize === b.resize.pageSize &&
     a.resize.dpi === b.resize.dpi
   );

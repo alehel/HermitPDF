@@ -32,7 +32,6 @@ function configsEqual(a: CompressConfig, b: CompressConfig): boolean {
   return (
     a.imageProcess.recompress === b.imageProcess.recompress &&
     a.imageProcess.quality === b.imageProcess.quality &&
-    a.imageProcess.resize.enabled === b.imageProcess.resize.enabled &&
     a.imageProcess.resize.pageSize === b.imageProcess.resize.pageSize &&
     a.imageProcess.resize.dpi === b.imageProcess.resize.dpi &&
     a.subsetFonts === b.subsetFonts &&
@@ -279,10 +278,9 @@ export function CompressWizard() {
                     imageQuality: t("imageQuality"),
                     smaller: t("smaller"),
                     higherQuality: t("higherQuality"),
-                    resizeImages: t("resizeImages"),
-                    resizeImagesDesc: t("resizeImagesDesc"),
                     pageSize: t("pageSize"),
                     dpi: t("dpi"),
+                    originalSize: t("originalSize"),
                   }}
                 />
 
