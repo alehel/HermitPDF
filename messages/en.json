@@ -144,7 +144,7 @@
     "imageQuality": "Image quality",
     "smaller": "smaller",
     "higherQuality": "higher quality",
-    "pageSize": "Page size",
+    "pageSize": "Size constraint",
     "dpi": "DPI",
     "originalSize": "Original size"
   },
@@ -367,7 +367,7 @@
     "back": "Back",
     "remove": "Remove file",
     "oversizedFiles": "Files too large to load (max 1 GB): {files}",
-    "pageSize": "Page size",
+    "pageSize": "Size constraint",
     "dpi": "DPI",
     "originalSize": "Original size"
   },
