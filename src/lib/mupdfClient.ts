@@ -1,7 +1,7 @@
 import * as Comlink from "comlink";
 import type { MupdfWorkerApi } from "@/workers/mupdf.worker";
 import { retrieveDoc } from "./pdfStore";
-import type { PageRef, PdfMetadata, ExtractedImage, ImagePosition, BatesConfig, CompressConfig } from "./types";
+import type { PageRef, PdfMetadata, ExtractedImage, ImagePosition, BatesConfig, CompressConfig, OutlineEntry } from "./types";
 import type { ImageProcessConfig } from "./imageResize";
 
 let worker: Comlink.Remote<MupdfWorkerApi> | null = null;
@@ -317,6 +317,17 @@ export async function buildPdfFromImagePages(
 ): Promise<Uint8Array> {
   const transferables = pages.map((p) => p.data);
   return getWorker().buildPdfFromImagePages(Comlink.transfer(pages, transferables));
+}
+
+/** Load the document outline (bookmarks) as a flat list with page ranges. */
+export async function loadOutline(
+  docId: string
+): Promise<OutlineEntry[] | null> {
+  return trackOp(docId, (async () => {
+    const handle = await ensureLoaded(docId);
+    const result = await getWorker().loadOutline(handle);
+    return (result as OutlineEntry[] | null);
+  })());
 }
 
 /** Merge pages into a single PDF using document handles for resource deduplication.
