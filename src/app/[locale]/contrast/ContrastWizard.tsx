@@ -23,7 +23,7 @@ import {
   type ExportDpiPreset,
 } from "@/lib/contrast";
 import {
-  buildPdfFromJpegPages,
+  buildPdfFromImagePages,
   getAllPageBounds,
   renderPage,
 } from "@/lib/mupdfClient";
@@ -36,11 +36,15 @@ import { usePdfIngestion } from "@/hooks/usePdfIngestion";
 const PREVIEW_DPI = 100;
 const PRESETS: ExportDpiPreset[] = ["low", "medium", "high"];
 
-function canvasToJpegBlob(canvas: HTMLCanvasElement, quality: number): Promise<Blob> {
+function canvasToBlob(
+  canvas: HTMLCanvasElement,
+  mimeType: string,
+  quality?: number
+): Promise<Blob> {
   return new Promise((resolve, reject) => {
     canvas.toBlob(
       (blob) => (blob ? resolve(blob) : reject(new Error("toBlob returned null"))),
-      "image/jpeg",
+      mimeType,
       quality
     );
   });
@@ -182,6 +186,11 @@ export function ContrastWizard() {
       const scale = dpi / 72;
 
       const offscreen = document.createElement("canvas");
+      // Thresholded pages are pure black/white — JPEG would ring around the
+      // sharp transitions. PNG is lossless and compresses 1-bit-ish content
+      // very efficiently, so it beats JPEG on both quality and size here.
+      const mimeType = config.thresholdEnabled ? "image/png" : "image/jpeg";
+      const quality = config.thresholdEnabled ? undefined : 0.9;
 
       const pages: { data: ArrayBuffer; widthPt: number; heightPt: number }[] = [];
       for (let i = 0; i < file.pageCount; i++) {
@@ -192,7 +201,7 @@ export function ContrastWizard() {
         const ctx = offscreen.getContext("2d");
         if (!ctx) throw new Error("Could not get 2D context");
         ctx.putImageData(imageData, 0, 0);
-        const blob = await canvasToJpegBlob(offscreen, 0.9);
+        const blob = await canvasToBlob(offscreen, mimeType, quality);
         const buf = await blob.arrayBuffer();
         pages.push({
           data: buf,
@@ -202,7 +211,7 @@ export function ContrastWizard() {
         setExportProgress({ done: i + 1, total: file.pageCount });
       }
 
-      const data = await buildPdfFromJpegPages(pages);
+      const data = await buildPdfFromImagePages(pages);
       downloadPdf(data, contrastFilename(file.name));
     } finally {
       setIsExporting(false);

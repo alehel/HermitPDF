@@ -1448,15 +1448,16 @@ const api = {
   },
 
   /**
-   * Build a PDF where each page is a single JPEG image at the given point size.
-   * Used by the contrast wizard's export pipeline: pages are rasterized and
-   * filtered on the main thread, then handed back here for assembly.
+   * Build a PDF where each page is a single embedded image at the given point
+   * size. Accepts whatever encoded image bytes MuPDF can read (typically JPEG
+   * or PNG); the wizard picks the right codec per page (JPEG for tone work,
+   * PNG when thresholding to keep B/W edges crisp).
    *
    * Point size is the on-page size in PDF user units; the image's pixel size
-   * is whatever the JPEG carries. The image stream is embedded as DCTDecode
-   * (raw JPEG bytes — no flate wrap) so file size matches the source JPEGs.
+   * is whatever the encoded bytes carry. MuPDF re-emits each image into its
+   * native PDF filter (DCTDecode for JPEG, FlateDecode for PNG).
    */
-  async buildPdfFromJpegPages(
+  async buildPdfFromImagePages(
     pages: { data: ArrayBuffer; widthPt: number; heightPt: number }[]
   ): Promise<Uint8Array> {
     const mupdf = await getMupdf();

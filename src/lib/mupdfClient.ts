@@ -310,12 +310,12 @@ export async function getAllPageBounds(
   })());
 }
 
-/** Build a PDF where each page is a single JPEG. Used by the contrast wizard. */
-export async function buildPdfFromJpegPages(
+/** Build a PDF where each page is a single embedded image. Used by the contrast wizard. */
+export async function buildPdfFromImagePages(
   pages: { data: ArrayBuffer; widthPt: number; heightPt: number }[]
 ): Promise<Uint8Array> {
   const transferables = pages.map((p) => p.data);
-  return getWorker().buildPdfFromJpegPages(Comlink.transfer(pages, transferables));
+  return getWorker().buildPdfFromImagePages(Comlink.transfer(pages, transferables));
 }
 
 /** Merge pages into a single PDF using document handles for resource deduplication. */
