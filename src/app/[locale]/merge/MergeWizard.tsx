@@ -19,12 +19,9 @@ import { usePdfIngestion } from "@/hooks/usePdfIngestion";
 import { ACCEPT_ATTRIBUTE } from "@/lib/fileDetect";
 import {
   DEFAULT_IMAGE_PROCESS_CONFIG,
-  PAGE_SIZE_KEYS,
-  DPI_PRESETS,
   type ImageProcessConfig,
-  type PageSizeKey,
-  type DpiPreset,
 } from "@/lib/imageResize";
+import { ImageProcessSettings } from "@/components/ImageProcessSettings";
 
 export function MergeWizard() {
   const t = useTranslations("mergeWizard");
@@ -210,114 +207,21 @@ export function MergeWizard() {
                   {t("imageSettingsHint", { count: imageFiles.length })}
                 </p>
 
-                {/* Recompress images toggle */}
-                <label className="flex items-center gap-3">
-                  <button
-                    type="button"
-                    role="switch"
-                    aria-checked={imageConfig.recompress}
-                    onClick={() => setImageConfig((c) => ({ ...c, recompress: !c.recompress }))}
-                    className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors ${
-                      imageConfig.recompress ? "bg-primary" : "bg-border"
-                    }`}
-                  >
-                    <span
-                      className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform ${
-                        imageConfig.recompress ? "translate-x-4" : "translate-x-0.5"
-                      }`}
-                    />
-                  </button>
-                  <div>
-                    <span className="text-sm font-medium text-foreground">{t("recompressImages")}</span>
-                    <p className="text-xs text-muted-foreground">{t("recompressImagesDesc")}</p>
-                  </div>
-                </label>
-
-                {/* Image quality slider */}
-                <div className={imageConfig.recompress ? "" : "opacity-40"}>
-                  <div className="mb-2 flex items-center justify-between">
-                    <span className="text-xs font-medium text-muted-foreground">{t("imageQuality")}</span>
-                    <span className="text-xs font-medium text-foreground tabular-nums">{imageConfig.quality}%</span>
-                  </div>
-                  <input
-                    type="range"
-                    min={30}
-                    max={100}
-                    step={5}
-                    value={imageConfig.quality}
-                    onChange={(e) => setImageConfig((c) => ({ ...c, quality: e.target.valueAsNumber }))}
-                    disabled={!imageConfig.recompress}
-                    className="w-full accent-primary"
-                  />
-                  <div className="mt-1 flex justify-between text-[10px] text-muted-foreground">
-                    <span>{t("smaller")}</span>
-                    <span>{t("higherQuality")}</span>
-                  </div>
-                </div>
-
-                <div className="h-px bg-border" />
-
-                {/* Resize images toggle */}
-                <label className="flex items-center gap-3">
-                  <button
-                    type="button"
-                    role="switch"
-                    aria-checked={imageConfig.resize.enabled}
-                    onClick={() => setImageConfig((c) => ({ ...c, resize: { ...c.resize, enabled: !c.resize.enabled } }))}
-                    className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors ${
-                      imageConfig.resize.enabled ? "bg-primary" : "bg-border"
-                    }`}
-                  >
-                    <span
-                      className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform ${
-                        imageConfig.resize.enabled ? "translate-x-4" : "translate-x-0.5"
-                      }`}
-                    />
-                  </button>
-                  <div>
-                    <span className="text-sm font-medium text-foreground">{t("resizeImages")}</span>
-                    <p className="text-xs text-muted-foreground">{t("resizeImagesDesc")}</p>
-                  </div>
-                </label>
-
-                <div className={`grid grid-cols-2 gap-3 ${imageConfig.resize.enabled ? "" : "opacity-40"}`}>
-                  <label className="block">
-                    <span className="mb-1 block text-xs font-medium text-muted-foreground">{t("pageSize")}</span>
-                    <select
-                      value={imageConfig.resize.pageSize}
-                      onChange={(e) =>
-                        setImageConfig((c) => ({
-                          ...c,
-                          resize: { ...c.resize, pageSize: e.target.value as PageSizeKey },
-                        }))
-                      }
-                      disabled={!imageConfig.resize.enabled}
-                      className="w-full rounded-lg border border-border bg-background px-2 py-1 text-sm text-foreground focus:border-primary focus:outline-none"
-                    >
-                      {PAGE_SIZE_KEYS.map((key) => (
-                        <option key={key} value={key}>{key}</option>
-                      ))}
-                    </select>
-                  </label>
-                  <label className="block">
-                    <span className="mb-1 block text-xs font-medium text-muted-foreground">{t("dpi")}</span>
-                    <select
-                      value={imageConfig.resize.dpi}
-                      onChange={(e) =>
-                        setImageConfig((c) => ({
-                          ...c,
-                          resize: { ...c.resize, dpi: Number(e.target.value) as DpiPreset },
-                        }))
-                      }
-                      disabled={!imageConfig.resize.enabled}
-                      className="w-full rounded-lg border border-border bg-background px-2 py-1 text-sm text-foreground focus:border-primary focus:outline-none"
-                    >
-                      {DPI_PRESETS.map((dpi) => (
-                        <option key={dpi} value={dpi}>{dpi}</option>
-                      ))}
-                    </select>
-                  </label>
-                </div>
+                <ImageProcessSettings
+                  config={imageConfig}
+                  onChange={setImageConfig}
+                  labels={{
+                    recompressImages: t("recompressImages"),
+                    recompressImagesDesc: t("recompressImagesDesc"),
+                    imageQuality: t("imageQuality"),
+                    smaller: t("smaller"),
+                    higherQuality: t("higherQuality"),
+                    resizeImages: t("resizeImages"),
+                    resizeImagesDesc: t("resizeImagesDesc"),
+                    pageSize: t("pageSize"),
+                    dpi: t("dpi"),
+                  }}
+                />
               </div>
             </div>
           </div>

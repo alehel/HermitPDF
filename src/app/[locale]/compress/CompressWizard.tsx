@@ -15,7 +15,7 @@ import { releaseWizardFile } from "@/lib/releaseWizardFile";
 import { DEFAULT_COMPRESS_CONFIG, compressedFilename } from "@/lib/compress";
 import { compressPdf, renderCompressedPreview } from "@/lib/mupdfClient";
 import { downloadPdf } from "@/lib/pdfExport";
-import { PAGE_SIZE_KEYS, DPI_PRESETS, type PageSizeKey, type DpiPreset } from "@/lib/imageResize";
+import { ImageProcessSettings } from "@/components/ImageProcessSettings";
 import { useDelayedFlag } from "@/hooks/useDelayedFlag";
 import { useDropZone } from "@/hooks/useDropZone";
 import { useFileInput } from "@/hooks/useFileInput";
@@ -30,14 +30,14 @@ interface CompressionResult {
 
 function configsEqual(a: CompressConfig, b: CompressConfig): boolean {
   return (
-    a.recompressImages === b.recompressImages &&
-    a.imageQuality === b.imageQuality &&
+    a.imageProcess.recompress === b.imageProcess.recompress &&
+    a.imageProcess.quality === b.imageProcess.quality &&
+    a.imageProcess.resize.enabled === b.imageProcess.resize.enabled &&
+    a.imageProcess.resize.pageSize === b.imageProcess.resize.pageSize &&
+    a.imageProcess.resize.dpi === b.imageProcess.resize.dpi &&
     a.subsetFonts === b.subsetFonts &&
     a.deduplicateObjects === b.deduplicateObjects &&
-    a.sanitizeStreams === b.sanitizeStreams &&
-    a.resize.enabled === b.resize.enabled &&
-    a.resize.pageSize === b.resize.pageSize &&
-    a.resize.dpi === b.resize.dpi
+    a.sanitizeStreams === b.sanitizeStreams
   );
 }
 
@@ -270,120 +270,21 @@ export function CompressWizard() {
               </h3>
 
               <div className="space-y-4 rounded-xl border border-border bg-card p-4">
-                {/* Recompress images toggle */}
-                <label className="flex items-center gap-3">
-                  <button
-                    type="button"
-                    role="switch"
-                    aria-checked={config.recompressImages}
-                    onClick={() => setConfig((c) => ({ ...c, recompressImages: !c.recompressImages }))}
-                    className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors ${
-                      config.recompressImages ? "bg-primary" : "bg-border"
-                    }`}
-                  >
-                    <span
-                      className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform ${
-                        config.recompressImages ? "translate-x-4" : "translate-x-0.5"
-                      }`}
-                    />
-                  </button>
-                  <div>
-                    <span className="text-sm font-medium text-foreground">{t("recompressImages")}</span>
-                    <p className="text-xs text-muted-foreground">{t("recompressImagesDesc")}</p>
-                  </div>
-                </label>
-
-                {/* Image quality slider */}
-                <div className={config.recompressImages ? "" : "opacity-40"}>
-                  <div className="mb-2 flex items-center justify-between">
-                    <span className="text-xs font-medium text-muted-foreground">
-                      {t("imageQuality")}
-                    </span>
-                    <span className="text-xs font-medium text-foreground tabular-nums">
-                      {config.imageQuality}%
-                    </span>
-                  </div>
-                  <input
-                    type="range"
-                    min={30}
-                    max={100}
-                    step={5}
-                    value={config.imageQuality}
-                    onChange={(e) => setConfig((c) => ({ ...c, imageQuality: e.target.valueAsNumber }))}
-                    disabled={!config.recompressImages}
-                    className="w-full accent-primary"
-                  />
-                  <div className="mt-1 flex justify-between text-[10px] text-muted-foreground">
-                    <span>{t("smaller")}</span>
-                    <span>{t("higherQuality")}</span>
-                  </div>
-                </div>
-
-                {/* Divider */}
-                <div className="h-px bg-border" />
-
-                {/* Resize images toggle */}
-                <label className="flex items-center gap-3">
-                  <button
-                    type="button"
-                    role="switch"
-                    aria-checked={config.resize.enabled}
-                    onClick={() => setConfig((c) => ({ ...c, resize: { ...c.resize, enabled: !c.resize.enabled } }))}
-                    className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors ${
-                      config.resize.enabled ? "bg-primary" : "bg-border"
-                    }`}
-                  >
-                    <span
-                      className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform ${
-                        config.resize.enabled ? "translate-x-4" : "translate-x-0.5"
-                      }`}
-                    />
-                  </button>
-                  <div>
-                    <span className="text-sm font-medium text-foreground">{t("resizeImages")}</span>
-                    <p className="text-xs text-muted-foreground">{t("resizeImagesDesc")}</p>
-                  </div>
-                </label>
-
-                {/* Page size + DPI dropdowns */}
-                <div className={`grid grid-cols-2 gap-3 ${config.resize.enabled ? "" : "opacity-40"}`}>
-                  <label className="block">
-                    <span className="mb-1 block text-xs font-medium text-muted-foreground">{t("pageSize")}</span>
-                    <select
-                      value={config.resize.pageSize}
-                      onChange={(e) =>
-                        setConfig((c) => ({
-                          ...c,
-                          resize: { ...c.resize, pageSize: e.target.value as PageSizeKey },
-                        }))
-                      }
-                      disabled={!config.resize.enabled}
-                      className="w-full rounded-lg border border-border bg-background px-2 py-1 text-sm text-foreground focus:border-primary focus:outline-none"
-                    >
-                      {PAGE_SIZE_KEYS.map((key) => (
-                        <option key={key} value={key}>{key}</option>
-                      ))}
-                    </select>
-                  </label>
-                  <label className="block">
-                    <span className="mb-1 block text-xs font-medium text-muted-foreground">{t("dpi")}</span>
-                    <select
-                      value={config.resize.dpi}
-                      onChange={(e) =>
-                        setConfig((c) => ({
-                          ...c,
-                          resize: { ...c.resize, dpi: Number(e.target.value) as DpiPreset },
-                        }))
-                      }
-                      disabled={!config.resize.enabled}
-                      className="w-full rounded-lg border border-border bg-background px-2 py-1 text-sm text-foreground focus:border-primary focus:outline-none"
-                    >
-                      {DPI_PRESETS.map((dpi) => (
-                        <option key={dpi} value={dpi}>{dpi}</option>
-                      ))}
-                    </select>
-                  </label>
-                </div>
+                <ImageProcessSettings
+                  config={config.imageProcess}
+                  onChange={(next) => setConfig((c) => ({ ...c, imageProcess: next }))}
+                  labels={{
+                    recompressImages: t("recompressImages"),
+                    recompressImagesDesc: t("recompressImagesDesc"),
+                    imageQuality: t("imageQuality"),
+                    smaller: t("smaller"),
+                    higherQuality: t("higherQuality"),
+                    resizeImages: t("resizeImages"),
+                    resizeImagesDesc: t("resizeImagesDesc"),
+                    pageSize: t("pageSize"),
+                    dpi: t("dpi"),
+                  }}
+                />
 
                 {/* Divider */}
                 <div className="h-px bg-border" />
