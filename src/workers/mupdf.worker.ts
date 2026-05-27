@@ -993,6 +993,28 @@ const api = {
     return Comlink.transfer({ pngData: data, aspectRatio }, [data.buffer]);
   },
 
+  /**
+   * Return each page's bounding box in PDF user units (points). Used when an
+   * export pipeline needs to know the natural page size up front — e.g. the
+   * contrast wizard, which rasterizes every page at a target DPI and then
+   * lays the images out at their original point size.
+   */
+  getAllPageBounds(handle: number): { widthPt: number; heightPt: number }[] {
+    const { doc } = getDoc(handle);
+    const count = doc.countPages();
+    const out: { widthPt: number; heightPt: number }[] = [];
+    for (let i = 0; i < count; i++) {
+      const page = doc.loadPage(i);
+      try {
+        const b = page.getBounds();
+        out.push({ widthPt: b[2] - b[0], heightPt: b[3] - b[1] });
+      } finally {
+        page.destroy();
+      }
+    }
+    return out;
+  },
+
   releaseDocument(handle: number): void {
     const entry = documents.get(handle);
     if (entry) {
@@ -1579,6 +1601,59 @@ const api = {
       } finally {
         page.destroy();
       }
+    } finally {
+      output.destroy();
+    }
+  },
+
+  /**
+   * Build a PDF where each page is a single embedded image at the given point
+   * size. Accepts whatever encoded image bytes MuPDF can read (typically JPEG
+   * or PNG); the wizard picks the right codec per page (JPEG for tone work,
+   * PNG when thresholding to keep B/W edges crisp).
+   *
+   * Point size is the on-page size in PDF user units; the image's pixel size
+   * is whatever the encoded bytes carry. MuPDF re-emits each image into its
+   * native PDF filter (DCTDecode for JPEG, FlateDecode for PNG).
+   */
+  async buildPdfFromImagePages(
+    pages: { data: ArrayBuffer; widthPt: number; heightPt: number }[]
+  ): Promise<Uint8Array> {
+    const mupdf = await getMupdf();
+    const output = new mupdf.PDFDocument();
+    try {
+      output.setMetaData("info:Creator", "hermitpdf.eu");
+      output.setMetaData("info:Producer", "hermitpdf.eu");
+
+      for (const p of pages) {
+        const img = new mupdf.Image(p.data);
+        const imgRef = output.addImage(img);
+        img.destroy();
+
+        const resources = output.addObject(output.newDictionary());
+        const xobjects = output.newDictionary();
+        xobjects.put("Img", imgRef);
+        resources.put("XObject", xobjects);
+
+        const contents = `q ${p.widthPt} 0 0 ${p.heightPt} 0 0 cm /Img Do Q`;
+        const pageObj = output.addPage(
+          [0, 0, p.widthPt, p.heightPt],
+          0,
+          resources,
+          contents
+        );
+        output.insertPage(-1, pageObj);
+      }
+
+      const buf = output.saveToBuffer({
+        compress: true,
+        "compress-images": false,
+        garbage: "deduplicate",
+        sanitize: true,
+      });
+      const bytes = buf.asUint8Array().slice();
+      buf.destroy();
+      return Comlink.transfer(bytes, [bytes.buffer]);
     } finally {
       output.destroy();
     }

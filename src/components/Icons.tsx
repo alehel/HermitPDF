@@ -382,6 +382,15 @@ export function BatesIcon(props: IconProps) {
   );
 }
 
+export function ContrastIcon(props: IconProps) {
+  return (
+    <Icon size={32} {...props}>
+      <circle cx="12" cy="12" r="9" />
+      <path d="M12 3 A9 9 0 0 1 12 21 Z" fill="currentColor" stroke="none" />
+    </Icon>
+  );
+}
+
 export function PlusCircleIcon(props: IconProps) {
   return (
     <Icon size={16} strokeWidth={2} {...props}>
