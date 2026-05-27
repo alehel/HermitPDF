@@ -63,27 +63,35 @@ export function ImageProcessSettings({
         </div>
       </label>
 
-      {/* Image quality slider */}
-      <div className={config.recompress ? "" : "opacity-40"}>
-        <div className="mb-2 flex items-center justify-between">
-          <span className="text-xs font-medium text-muted-foreground">{labels.imageQuality}</span>
-          <span className="text-xs font-medium text-foreground tabular-nums">{config.quality}%</span>
-        </div>
-        <input
-          type="range"
-          min={30}
-          max={100}
-          step={5}
-          value={config.quality}
-          onChange={(e) => onChange({ ...config, quality: e.target.valueAsNumber })}
-          disabled={!config.recompress}
-          className="w-full accent-primary"
-        />
-        <div className="mt-1 flex justify-between text-[10px] text-muted-foreground">
-          <span>{labels.smaller}</span>
-          <span>{labels.higherQuality}</span>
-        </div>
-      </div>
+      {/* Image quality slider — active whenever we'll re-encode any image,
+          which is recompress=on (re-encode all) or resize=on (re-encode the
+          downsampled ones). When both are off, no re-encoding happens so the
+          slider has nothing to drive and is dimmed. */}
+      {(() => {
+        const willReencode = config.recompress || config.resize.enabled;
+        return (
+          <div className={willReencode ? "" : "opacity-40"}>
+            <div className="mb-2 flex items-center justify-between">
+              <span className="text-xs font-medium text-muted-foreground">{labels.imageQuality}</span>
+              <span className="text-xs font-medium text-foreground tabular-nums">{config.quality}%</span>
+            </div>
+            <input
+              type="range"
+              min={30}
+              max={100}
+              step={5}
+              value={config.quality}
+              onChange={(e) => onChange({ ...config, quality: e.target.valueAsNumber })}
+              disabled={!willReencode}
+              className="w-full accent-primary"
+            />
+            <div className="mt-1 flex justify-between text-[10px] text-muted-foreground">
+              <span>{labels.smaller}</span>
+              <span>{labels.higherQuality}</span>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Divider */}
       <div className="h-px bg-border" />

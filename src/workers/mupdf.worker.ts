@@ -13,7 +13,6 @@ import {
 import {
   fitWithinResizeCap,
   pageSizeInPoints,
-  type ResizeConfig,
   type ImageProcessConfig,
 } from "@/lib/imageResize";
 
@@ -619,8 +618,7 @@ function recompressImageXObject(
   pdf: MupdfPDFDocument,
   xobj: MupdfPDFObject,
   seen: Set<number>,
-  quality: number,
-  resize?: ResizeConfig
+  config: ImageProcessConfig
 ): void {
   const objNum = xobj.isIndirect() ? xobj.asIndirect() : 0;
   if (objNum > 0) {
@@ -637,10 +635,16 @@ function recompressImageXObject(
   // the savings, and the artifacts are more visible at small sizes.
   if (w < 100 || h < 100) return;
 
-  const targetSize =
-    resize && resize.enabled
-      ? fitWithinResizeCap(w, h, resize)
-      : { width: w, height: h, scaled: false };
+  const targetSize = config.resize.enabled
+    ? fitWithinResizeCap(w, h, config.resize)
+    : { width: w, height: h, scaled: false };
+
+  // Re-encode only when the user asked to (recompress) or when resize forces
+  // it (the image actually got scaled). Otherwise leave the original bytes
+  // alone — resize-on with no oversized images shouldn't touch anything.
+  if (!config.recompress && !targetSize.scaled) return;
+
+  const quality = config.quality;
 
   // ImageMasks are 1-bit stencils; recompressing as JPEG would silently
   // produce an opaque rectangle. Mask/SMask images participate in alpha or
@@ -734,8 +738,7 @@ function walkResourcesForRecompression(
   pdf: MupdfPDFDocument,
   resources: MupdfPDFObject,
   seen: Set<number>,
-  quality: number,
-  resize?: ResizeConfig
+  config: ImageProcessConfig
 ): void {
   if (resources.isNull()) return;
   const xobjs = resources.get("XObject");
@@ -746,29 +749,32 @@ function walkResourcesForRecompression(
     if (!subtype.isName()) return;
     const subtypeName = subtype.asName();
     if (subtypeName === "Image") {
-      recompressImageXObject(mupdf, pdf, val, seen, quality, resize);
+      recompressImageXObject(mupdf, pdf, val, seen, config);
     } else if (subtypeName === "Form") {
-      walkResourcesForRecompression(mupdf, pdf, val.get("Resources"), seen, quality, resize);
+      walkResourcesForRecompression(mupdf, pdf, val.get("Resources"), seen, config);
     }
   });
 }
 
 /**
- * Recompress every Image XObject reachable from the document's pages.
- * Modifies the PDFDocument in place.
+ * Walk every Image XObject reachable from the document's pages and recompress
+ * and/or downsample as the config dictates. Modifies the PDFDocument in place.
+ *
+ * Each image decides independently whether to be re-encoded: if recompress is
+ * on, all are; if only resize is on, just the oversized ones are. The quality
+ * setting is applied to whatever images do get re-encoded.
  */
 function recompressAllImages(
   mupdf: typeof import("mupdf"),
   pdf: MupdfPDFDocument,
-  quality: number,
-  resize?: ResizeConfig
+  config: ImageProcessConfig
 ): void {
   const seen = new Set<number>();
   const pageCount = pdf.countPages();
   for (let i = 0; i < pageCount; i++) {
     const pageObj = pdf.findPage(i);
     const resources = pageObj.getInheritable("Resources");
-    walkResourcesForRecompression(mupdf, pdf, resources, seen, quality, resize);
+    walkResourcesForRecompression(mupdf, pdf, resources, seen, config);
   }
 }
 
@@ -844,7 +850,10 @@ function appendProcessedImagePage(
       ? fitWithinResizeCap(srcW, srcH, config.resize)
       : { width: srcW, height: srcH, scaled: false };
 
-    if (target.scaled || config.recompress) {
+    // Re-encode only when the user opted in (recompress) or when resize
+    // forced this image to be downsampled. If neither, keep the original
+    // image bytes intact and just rebuild the page below at the new size.
+    if (config.recompress || target.scaled) {
       const pixmap = sourceImage.toPixmap();
       try {
         let pixmapToEncode = pixmap;
@@ -860,8 +869,9 @@ function appendProcessedImagePage(
             resized = pixmap.warp(corners, target.width, target.height);
             pixmapToEncode = resized;
           }
-          const quality = config.recompress ? config.quality : 92;
-          const jpegBytes = pixmapToEncode.asJPEG(quality).slice();
+          // Quality always comes from the slider. The slider is enabled
+          // whenever either toggle is on, so the value is the user's choice.
+          const jpegBytes = pixmapToEncode.asJPEG(config.quality).slice();
           processedImage = new mupdf.Image(jpegBytes);
           imageOwnedHere = true;
         } finally {
@@ -1504,7 +1514,7 @@ const api = {
       }
 
       if (config.imageProcess.recompress || config.imageProcess.resize.enabled) {
-        recompressAllImages(mupdf, output, config.imageProcess.quality, config.imageProcess.resize);
+        recompressAllImages(mupdf, output, config.imageProcess);
       }
 
       if (config.subsetFonts) {
@@ -1546,7 +1556,7 @@ const api = {
       output.graftPage(0, sourcePdf, pageIndex);
 
       if (config.imageProcess.recompress || config.imageProcess.resize.enabled) {
-        recompressAllImages(mupdf, output, config.imageProcess.quality, config.imageProcess.resize);
+        recompressAllImages(mupdf, output, config.imageProcess);
       }
 
       const { matrix, normalizedBbox } = buildPageMatrix(mupdf, output, 0, dpi, 0);
