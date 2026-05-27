@@ -39,6 +39,9 @@ export interface WizardFile {
   // Set when the file was ingested with allowProtected and is encrypted —
   // the stack has no pages until the wizard authenticates the document.
   needsPassword?: boolean;
+  // Set when the file was ingested from an image (jpeg/png/heic). The wizard
+  // can offer image-specific processing (recompress, resize) only for these.
+  isImage?: boolean;
 }
 
 export interface ImagePosition {
@@ -66,9 +69,10 @@ export interface BatesConfig {
   shrink: boolean;
 }
 
+import type { ImageProcessConfig } from "./imageResize";
+
 export interface CompressConfig {
-  recompressImages: boolean;
-  imageQuality: number;
+  imageProcess: ImageProcessConfig;
   subsetFonts: boolean;
   deduplicateObjects: boolean;
   sanitizeStreams: boolean;

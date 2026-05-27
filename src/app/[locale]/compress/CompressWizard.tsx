@@ -15,6 +15,8 @@ import { releaseWizardFile } from "@/lib/releaseWizardFile";
 import { DEFAULT_COMPRESS_CONFIG, compressedFilename } from "@/lib/compress";
 import { compressPdf, renderCompressedPreview } from "@/lib/mupdfClient";
 import { downloadPdf } from "@/lib/pdfExport";
+import { ImageProcessSettings } from "@/components/ImageProcessSettings";
+import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 import { useDelayedFlag } from "@/hooks/useDelayedFlag";
 import { useDropZone } from "@/hooks/useDropZone";
 import { useFileInput } from "@/hooks/useFileInput";
@@ -29,8 +31,10 @@ interface CompressionResult {
 
 function configsEqual(a: CompressConfig, b: CompressConfig): boolean {
   return (
-    a.recompressImages === b.recompressImages &&
-    a.imageQuality === b.imageQuality &&
+    a.imageProcess.recompress === b.imageProcess.recompress &&
+    a.imageProcess.quality === b.imageProcess.quality &&
+    a.imageProcess.resize.pageSize === b.imageProcess.resize.pageSize &&
+    a.imageProcess.resize.dpi === b.imageProcess.resize.dpi &&
     a.subsetFonts === b.subsetFonts &&
     a.deduplicateObjects === b.deduplicateObjects &&
     a.sanitizeStreams === b.sanitizeStreams
@@ -65,6 +69,19 @@ export function CompressWizard() {
   const [previewImageData, setPreviewImageData] = useState<ImageData | null>(null);
   const [isPreviewLoading, setIsPreviewLoading] = useState(false);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  // Bumped on every preview request so superseded in-flight renders can be dropped.
+  const reqIdRef = useRef(0);
+
+  // Debounced inputs drive the auto-preview effect. The manual button uses the
+  // immediate values to bypass the debounce.
+  const debouncedConfig = useDebouncedValue(config);
+  const debouncedFile = useDebouncedValue(file);
+  const debouncedPreviewPage = useDebouncedValue(previewPage);
+
+  const showPreviewIndicator = useDelayedFlag(isPreviewLoading, {
+    showAfterMs: 300,
+    minDurationMs: 400,
+  });
 
   const fileRef = useRef(file);
   fileRef.current = file;
@@ -146,21 +163,34 @@ export function CompressWizard() {
   }, [file, result]);
 
   /* ---- Preview ---- */
-  const handlePreview = useCallback(async () => {
-    if (!file) return;
-    setIsPreviewLoading(true);
-    try {
-      const imageData = await renderCompressedPreview(
-        file.sourceDocId,
-        previewPage - 1,
-        config,
-        144
-      );
-      setPreviewImageData(imageData);
-    } finally {
-      setIsPreviewLoading(false);
-    }
-  }, [file, previewPage, config]);
+  const runPreview = useCallback(
+    async (target: WizardFile | null, pageNum: number, cfg: CompressConfig) => {
+      if (!target) {
+        setPreviewImageData(null);
+        return;
+      }
+      const myReqId = ++reqIdRef.current;
+      setIsPreviewLoading(true);
+      try {
+        const imageData = await renderCompressedPreview(
+          target.sourceDocId,
+          pageNum - 1,
+          cfg,
+          144
+        );
+        if (reqIdRef.current !== myReqId) return; // superseded
+        setPreviewImageData(imageData);
+      } finally {
+        if (reqIdRef.current === myReqId) setIsPreviewLoading(false);
+      }
+    },
+    []
+  );
+
+  // Auto-trigger preview on debounced input changes.
+  useEffect(() => {
+    runPreview(debouncedFile, debouncedPreviewPage, debouncedConfig);
+  }, [debouncedFile, debouncedPreviewPage, debouncedConfig, runPreview]);
 
   /* ---- Paint preview to canvas ---- */
   useEffect(() => {
@@ -266,54 +296,21 @@ export function CompressWizard() {
               </h3>
 
               <div className="space-y-4 rounded-xl border border-border bg-card p-4">
-                {/* Recompress images toggle */}
-                <label className="flex items-center gap-3">
-                  <button
-                    type="button"
-                    role="switch"
-                    aria-checked={config.recompressImages}
-                    onClick={() => setConfig((c) => ({ ...c, recompressImages: !c.recompressImages }))}
-                    className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors ${
-                      config.recompressImages ? "bg-primary" : "bg-border"
-                    }`}
-                  >
-                    <span
-                      className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform ${
-                        config.recompressImages ? "translate-x-4" : "translate-x-0.5"
-                      }`}
-                    />
-                  </button>
-                  <div>
-                    <span className="text-sm font-medium text-foreground">{t("recompressImages")}</span>
-                    <p className="text-xs text-muted-foreground">{t("recompressImagesDesc")}</p>
-                  </div>
-                </label>
-
-                {/* Image quality slider */}
-                <div className={config.recompressImages ? "" : "opacity-40"}>
-                  <div className="mb-2 flex items-center justify-between">
-                    <span className="text-xs font-medium text-muted-foreground">
-                      {t("imageQuality")}
-                    </span>
-                    <span className="text-xs font-medium text-foreground tabular-nums">
-                      {config.imageQuality}%
-                    </span>
-                  </div>
-                  <input
-                    type="range"
-                    min={30}
-                    max={100}
-                    step={5}
-                    value={config.imageQuality}
-                    onChange={(e) => setConfig((c) => ({ ...c, imageQuality: e.target.valueAsNumber }))}
-                    disabled={!config.recompressImages}
-                    className="w-full accent-primary"
-                  />
-                  <div className="mt-1 flex justify-between text-[10px] text-muted-foreground">
-                    <span>{t("smaller")}</span>
-                    <span>{t("higherQuality")}</span>
-                  </div>
-                </div>
+                <ImageProcessSettings
+                  config={config.imageProcess}
+                  onChange={(next) => setConfig((c) => ({ ...c, imageProcess: next }))}
+                  labels={{
+                    recompressImages: t("recompressImages"),
+                    recompressImagesDesc: t("recompressImagesDesc"),
+                    imageQuality: t("imageQuality"),
+                    smaller: t("smaller"),
+                    higherQuality: t("higherQuality"),
+                    pageSize: t("pageSize"),
+                    dpi: t("dpi"),
+                    originalSize: t("originalSize"),
+                    resizeHint: t("resizeHint"),
+                  }}
+                />
 
                 {/* Divider */}
                 <div className="h-px bg-border" />
@@ -465,7 +462,7 @@ export function CompressWizard() {
                     <span className="text-xs text-muted-foreground">/ {totalPages}</span>
                     <button
                       type="button"
-                      onClick={handlePreview}
+                      onClick={() => runPreview(file, previewPage, config)}
                       disabled={isPreviewLoading}
                       className="ml-auto rounded-lg bg-accent px-3 py-1.5 text-xs font-medium text-foreground transition-all hover:bg-accent/80 disabled:opacity-60"
                     >
@@ -473,22 +470,30 @@ export function CompressWizard() {
                     </button>
                   </div>
 
-                  {previewImageData ? (
-                    <div
-                      className="rounded-lg border border-border"
-                      style={checkerboardStyle}
-                    >
-                      <canvas
-                        ref={canvasRef}
-                        className="w-full rounded-lg"
-                        style={{ maxHeight: "500px", objectFit: "contain", display: "block" }}
-                      />
-                    </div>
-                  ) : (
-                    <div className="flex h-48 items-center justify-center rounded-lg border border-dashed border-border text-xs text-muted-foreground">
-                      {t("previewHint")}
-                    </div>
-                  )}
+                  <div className="relative">
+                    {previewImageData ? (
+                      <div
+                        className="rounded-lg border border-border"
+                        style={checkerboardStyle}
+                      >
+                        <canvas
+                          ref={canvasRef}
+                          className="w-full rounded-lg"
+                          style={{ maxHeight: "500px", objectFit: "contain", display: "block" }}
+                        />
+                      </div>
+                    ) : (
+                      <div className="flex h-48 items-center justify-center rounded-lg border border-dashed border-border text-xs text-muted-foreground">
+                        {showPreviewIndicator ? t("updating") : t("previewHint")}
+                      </div>
+                    )}
+                    {previewImageData && showPreviewIndicator && (
+                      <div className="absolute top-2 right-2 flex items-center gap-1.5 rounded-full bg-background/90 px-2 py-1 text-[10px] font-medium text-muted-foreground shadow-sm backdrop-blur-sm">
+                        <span className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-muted-foreground border-t-transparent" />
+                        <span>{t("updating")}</span>
+                      </div>
+                    )}
+                  </div>
               </div>
             </div>
           </div>

@@ -15,6 +15,7 @@ import { releaseWizardFile } from "@/lib/releaseWizardFile";
 import { DEFAULT_BATES_CONFIG, formatBatesNumber } from "@/lib/batesStamp";
 import { exportBatesPdfs, downloadBatesOutput } from "@/lib/batesExport";
 import { renderBatesPreview } from "@/lib/mupdfClient";
+import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 import { useDelayedFlag } from "@/hooks/useDelayedFlag";
 import { useDropZone } from "@/hooks/useDropZone";
 import { useFileInput } from "@/hooks/useFileInput";
@@ -42,6 +43,21 @@ export function BatesWizard() {
   const [previewImageData, setPreviewImageData] = useState<ImageData | null>(null);
   const [isPreviewLoading, setIsPreviewLoading] = useState(false);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  // Bumped on every preview request so superseded in-flight renders can be dropped.
+  const reqIdRef = useRef(0);
+
+  // Debounced inputs drive the auto-preview effect. The manual button uses the
+  // immediate values to bypass the debounce.
+  const debouncedConfig = useDebouncedValue(config);
+  const debouncedFiles = useDebouncedValue(files);
+  const debouncedPreviewPage = useDebouncedValue(previewPage);
+
+  // Spinner badge — only show when a render takes long enough to notice,
+  // and keep it visible long enough to read.
+  const showPreviewIndicator = useDelayedFlag(isPreviewLoading, {
+    showAfterMs: 300,
+    minDurationMs: 400,
+  });
 
   const filesRef = useRef(files);
   filesRef.current = files;
@@ -115,44 +131,60 @@ export function BatesWizard() {
   }, [files, config]);
 
   /* ---- Preview ---- */
-  const handlePreview = useCallback(async () => {
-    if (files.length === 0) return;
-
-    // Resolve global page number to file + local page index
-    let remaining = previewPage;
-    let targetFile: WizardFile | null = null;
-    let localPageIndex = 0;
-    let globalOffset = 0;
-
-    for (const file of files) {
-      if (remaining <= file.pageCount) {
-        targetFile = file;
-        localPageIndex = remaining - 1;
-        break;
+  const runPreview = useCallback(
+    async (fileList: WizardFile[], pageNum: number, cfg: BatesConfig) => {
+      if (fileList.length === 0) {
+        setPreviewImageData(null);
+        return;
       }
-      remaining -= file.pageCount;
-      globalOffset += file.pageCount;
-    }
 
-    if (!targetFile) return;
+      // Resolve global page number to file + local page index
+      let remaining = pageNum;
+      let targetFile: WizardFile | null = null;
+      let localPageIndex = 0;
+      let globalOffset = 0;
 
-    setIsPreviewLoading(true);
-    try {
-      const previewConfig = {
-        ...config,
-        startNumber: config.startNumber + globalOffset + localPageIndex,
-      };
-      const imageData = await renderBatesPreview(
-        targetFile.stack.pages[0].sourceDocId,
-        localPageIndex,
-        previewConfig,
-        144
-      );
-      setPreviewImageData(imageData);
-    } finally {
-      setIsPreviewLoading(false);
-    }
-  }, [files, previewPage, config]);
+      for (const file of fileList) {
+        if (remaining <= file.pageCount) {
+          targetFile = file;
+          localPageIndex = remaining - 1;
+          break;
+        }
+        remaining -= file.pageCount;
+        globalOffset += file.pageCount;
+      }
+
+      if (!targetFile) {
+        setPreviewImageData(null);
+        return;
+      }
+
+      const myReqId = ++reqIdRef.current;
+      setIsPreviewLoading(true);
+      try {
+        const previewConfig = {
+          ...cfg,
+          startNumber: cfg.startNumber + globalOffset + localPageIndex,
+        };
+        const imageData = await renderBatesPreview(
+          targetFile.stack.pages[0].sourceDocId,
+          localPageIndex,
+          previewConfig,
+          144
+        );
+        if (reqIdRef.current !== myReqId) return; // superseded
+        setPreviewImageData(imageData);
+      } finally {
+        if (reqIdRef.current === myReqId) setIsPreviewLoading(false);
+      }
+    },
+    []
+  );
+
+  // Auto-trigger preview on debounced input changes.
+  useEffect(() => {
+    runPreview(debouncedFiles, debouncedPreviewPage, debouncedConfig);
+  }, [debouncedFiles, debouncedPreviewPage, debouncedConfig, runPreview]);
 
   /* ---- Paint preview to canvas ---- */
   useEffect(() => {
@@ -398,7 +430,7 @@ export function BatesWizard() {
                   <span className="text-xs text-muted-foreground">/ {totalPages}</span>
                   <button
                     type="button"
-                    onClick={handlePreview}
+                    onClick={() => runPreview(files, previewPage, config)}
                     disabled={isPreviewLoading}
                     className="ml-auto rounded-lg bg-accent px-3 py-1.5 text-xs font-medium text-foreground transition-all hover:bg-accent/80 disabled:opacity-60"
                   >
@@ -406,22 +438,30 @@ export function BatesWizard() {
                   </button>
                 </div>
 
-                {previewImageData ? (
-                  <div
-                    className="rounded-lg border border-border"
-                    style={checkerboardStyle}
-                  >
-                    <canvas
-                      ref={canvasRef}
-                      className="w-full rounded-lg"
-                      style={{ maxHeight: "500px", objectFit: "contain", display: "block" }}
-                    />
-                  </div>
-                ) : (
-                  <div className="flex h-48 items-center justify-center rounded-lg border border-dashed border-border text-xs text-muted-foreground">
-                    {t("updatePreview")}
-                  </div>
-                )}
+                <div className="relative">
+                  {previewImageData ? (
+                    <div
+                      className="rounded-lg border border-border"
+                      style={checkerboardStyle}
+                    >
+                      <canvas
+                        ref={canvasRef}
+                        className="w-full rounded-lg"
+                        style={{ maxHeight: "500px", objectFit: "contain", display: "block" }}
+                      />
+                    </div>
+                  ) : (
+                    <div className="flex h-48 items-center justify-center rounded-lg border border-dashed border-border text-xs text-muted-foreground">
+                      {showPreviewIndicator ? t("updating") : t("updatePreview")}
+                    </div>
+                  )}
+                  {previewImageData && showPreviewIndicator && (
+                    <div className="absolute top-2 right-2 flex items-center gap-1.5 rounded-full bg-background/90 px-2 py-1 text-[10px] font-medium text-muted-foreground shadow-sm backdrop-blur-sm">
+                      <span className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-muted-foreground border-t-transparent" />
+                      <span>{t("updating")}</span>
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
           </div>

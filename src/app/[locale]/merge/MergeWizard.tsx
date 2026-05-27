@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslations } from "next-intl";
 import { MergeIcon, MergeFilesIcon } from "@/components/Icons";
 import { DropZone } from "@/components/DropZone";
@@ -17,12 +17,18 @@ import { useDropZone } from "@/hooks/useDropZone";
 import { useFileInput } from "@/hooks/useFileInput";
 import { usePdfIngestion } from "@/hooks/usePdfIngestion";
 import { ACCEPT_ATTRIBUTE } from "@/lib/fileDetect";
+import {
+  DEFAULT_IMAGE_PROCESS_CONFIG,
+  type ImageProcessConfig,
+} from "@/lib/imageResize";
+import { ImageProcessSettings } from "@/components/ImageProcessSettings";
 
 export function MergeWizard() {
   const t = useTranslations("mergeWizard");
 
   const [files, setFiles] = useState<WizardFile[]>([]);
   const [isMerging, setIsMerging] = useState(false);
+  const [imageConfig, setImageConfig] = useState<ImageProcessConfig>(DEFAULT_IMAGE_PROCESS_CONFIG);
   const showOverlay = useDelayedFlag(isMerging);
 
   const filesRef = useRef(files);
@@ -84,18 +90,30 @@ export function MergeWizard() {
     []
   );
 
+  /* ---- Image-derived files ---- */
+  const imageFiles = useMemo(() => files.filter((f) => f.isImage), [files]);
+  const hasImageFiles = imageFiles.length > 0;
+
   /* ---- Merge and download ---- */
   const handleMerge = useCallback(async () => {
     if (files.length === 0) return;
     setIsMerging(true);
     try {
       const stacks = files.map((f) => f.stack);
-      const data = await exportMergedPdf(stacks);
+      // Apply image processing only to image-derived files, and only when at
+      // least one of the toggles would actually change something.
+      // Only forward an image-process config when the master toggle is on;
+      // otherwise let mergeFromHandles graft image-derived pages as-is.
+      const willProcess = hasImageFiles && imageConfig.recompress;
+      const imageProcessByDocId = willProcess
+        ? new Map(imageFiles.map((f) => [f.sourceDocId, imageConfig]))
+        : undefined;
+      const data = await exportMergedPdf(stacks, undefined, imageProcessByDocId);
       downloadPdf(data, "merged.pdf");
     } finally {
       setIsMerging(false);
     }
-  }, [files]);
+  }, [files, hasImageFiles, imageFiles, imageConfig]);
 
   /* ---- Computed values ---- */
   const totalPages = files.reduce((sum, f) => sum + f.pageCount, 0);
@@ -108,7 +126,7 @@ export function MergeWizard() {
   ) : undefined;
 
   const formatSubtitle = useCallback(
-    (file: WizardFile) => `${t("pageCount", { count: file.pageCount })} \u00b7 ${formatSize(file.fileSize)}`,
+    (file: WizardFile) => `${t("pageCount", { count: file.pageCount })} · ${formatSize(file.fileSize)}`,
     [t]
   );
 
@@ -137,6 +155,7 @@ export function MergeWizard() {
         title={t("title")}
         badge={wizardTitleBadge}
         empty={isEmpty}
+        wide={!isEmpty && hasImageFiles}
         footer={!isEmpty ? {
           statusText: <><span className="font-medium text-foreground">{totalPages}</span>{" "}{t("pagesTotal")}</>,
           buttonLabel: isMerging ? t("merging") : t("mergeAndDownload"),
@@ -157,6 +176,57 @@ export function MergeWizard() {
             icon={MergeFilesIcon}
             autoFocus
           />
+        ) : hasImageFiles ? (
+          <div className="grid grid-cols-1 gap-8 lg:grid-cols-2 lg:items-start">
+            <div>
+              <SortableFileList
+                files={files}
+                dragKey="merge"
+                onRemove={handleRemove}
+                onReorder={handleReorder}
+                onFilesAdded={handleFilesAdded}
+                openFilePicker={openFilePicker}
+                isDragOver={isDragOver}
+                dropZoneHandlers={{
+                  onDragOver: handleDropZoneDragOver,
+                  onDragLeave: handleDropZoneDragLeave,
+                  onDrop: handleDropZoneDrop,
+                }}
+                formatSubtitle={formatSubtitle}
+                labels={{
+                  dragToReorder: t("dragToReorder"),
+                  addMoreFiles: t("addMoreFiles"),
+                }}
+              />
+            </div>
+
+            <div className="lg:sticky lg:top-8">
+              <h3 className="mb-4 text-xs font-medium uppercase tracking-widest text-muted-foreground">
+                {t("imageSettings")}
+              </h3>
+              <div className="space-y-4 rounded-xl border border-border bg-card p-4">
+                <p className="text-xs text-muted-foreground">
+                  {t("imageSettingsHint", { count: imageFiles.length })}
+                </p>
+
+                <ImageProcessSettings
+                  config={imageConfig}
+                  onChange={setImageConfig}
+                  labels={{
+                    recompressImages: t("recompressImages"),
+                    recompressImagesDesc: t("recompressImagesDesc"),
+                    imageQuality: t("imageQuality"),
+                    smaller: t("smaller"),
+                    higherQuality: t("higherQuality"),
+                    pageSize: t("pageSize"),
+                    dpi: t("dpi"),
+                    originalSize: t("originalSize"),
+                    resizeHint: t("resizeHint"),
+                  }}
+                />
+              </div>
+            </div>
+          </div>
         ) : (
           <SortableFileList
             files={files}

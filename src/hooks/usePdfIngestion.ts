@@ -78,6 +78,7 @@ export function usePdfIngestion(hookOptions?: UsePdfIngestionOptions) {
               fileSize: f.size,
               sourceDocId: result.sourceDocId,
               needsPassword: result.needsPassword,
+              isImage: detected.magic.startsWith("image/"),
             };
             return wizardFile;
           } catch (err) {
