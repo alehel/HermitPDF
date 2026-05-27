@@ -10,6 +10,12 @@ import {
   computeStampPosition,
   getQuadding,
 } from "@/lib/batesStamp";
+import {
+  fitWithinResizeCap,
+  isResizeActive,
+  pageSizeInPoints,
+  type ImageProcessConfig,
+} from "@/lib/imageResize";
 
 type PdfMetadata = {
   title?: string;
@@ -29,8 +35,7 @@ type BatesStampWorkerConfig = {
 };
 
 type CompressWorkerConfig = {
-  recompressImages: boolean;
-  imageQuality: number;
+  imageProcess: ImageProcessConfig;
   subsetFonts: boolean;
   deduplicateObjects: boolean;
   sanitizeStreams: boolean;
@@ -614,7 +619,7 @@ function recompressImageXObject(
   pdf: MupdfPDFDocument,
   xobj: MupdfPDFObject,
   seen: Set<number>,
-  quality: number
+  config: ImageProcessConfig
 ): void {
   const objNum = xobj.isIndirect() ? xobj.asIndirect() : 0;
   if (objNum > 0) {
@@ -630,6 +635,12 @@ function recompressImageXObject(
   // Skip thumbnails and decorative bits — re-encoding them costs more than
   // the savings, and the artifacts are more visible at small sizes.
   if (w < 100 || h < 100) return;
+
+  // Caller already gated on config.recompress, so we always re-encode here.
+  // fitWithinResizeCap returns a no-op {scaled:false} when pageSize is
+  // "Original", so we can call it unconditionally.
+  const targetSize = fitWithinResizeCap(w, h, config.resize);
+  const quality = config.quality;
 
   // ImageMasks are 1-bit stencils; recompressing as JPEG would silently
   // produce an opaque rectangle. Mask/SMask images participate in alpha or
@@ -651,6 +662,7 @@ function recompressImageXObject(
     const pixmap = image.toPixmap();
     let pixmapForJpeg = pixmap;
     let createdRgbCopy = false;
+    let resizedPixmap: InstanceType<typeof mupdf.Pixmap> | null = null;
     try {
       // JPEG can't carry an alpha channel, and CMYK JPEGs need a separate
       // path with invert_cmyk. Convert anything that isn't 1- or 3-component
@@ -660,6 +672,24 @@ function recompressImageXObject(
       if (hasAlpha || numComponents > 3) {
         pixmapForJpeg = pixmap.convertToColorSpace(mupdf.ColorSpace.DeviceRGB, false);
         createdRgbCopy = true;
+      }
+
+      // Downscale to the resize cap. Pixmap.warp resamples to the target W/H
+      // using the source's own corner points — when passed axis-aligned
+      // corners this is a straight resample (no perspective).
+      if (targetSize.scaled) {
+        const srcW = pixmapForJpeg.getWidth();
+        const srcH = pixmapForJpeg.getHeight();
+        const corners: [number, number][] = [
+          [0, 0],
+          [srcW, 0],
+          [srcW, srcH],
+          [0, srcH],
+        ];
+        resizedPixmap = pixmapForJpeg.warp(corners, targetSize.width, targetSize.height);
+        if (createdRgbCopy) pixmapForJpeg.destroy();
+        pixmapForJpeg = resizedPixmap;
+        createdRgbCopy = false;
       }
 
       const finalComponents = pixmapForJpeg.getNumberOfComponents();
@@ -681,7 +711,8 @@ function recompressImageXObject(
       // images carry their compression in the JPEG container itself.
       xobj.writeRawStream(jpegBytes);
     } finally {
-      if (createdRgbCopy) pixmapForJpeg.destroy();
+      if (resizedPixmap) resizedPixmap.destroy();
+      else if (createdRgbCopy) pixmapForJpeg.destroy();
       pixmap.destroy();
     }
   } catch {
@@ -703,7 +734,7 @@ function walkResourcesForRecompression(
   pdf: MupdfPDFDocument,
   resources: MupdfPDFObject,
   seen: Set<number>,
-  quality: number
+  config: ImageProcessConfig
 ): void {
   if (resources.isNull()) return;
   const xobjs = resources.get("XObject");
@@ -714,28 +745,32 @@ function walkResourcesForRecompression(
     if (!subtype.isName()) return;
     const subtypeName = subtype.asName();
     if (subtypeName === "Image") {
-      recompressImageXObject(mupdf, pdf, val, seen, quality);
+      recompressImageXObject(mupdf, pdf, val, seen, config);
     } else if (subtypeName === "Form") {
-      walkResourcesForRecompression(mupdf, pdf, val.get("Resources"), seen, quality);
+      walkResourcesForRecompression(mupdf, pdf, val.get("Resources"), seen, config);
     }
   });
 }
 
 /**
- * Recompress every Image XObject reachable from the document's pages.
- * Modifies the PDFDocument in place.
+ * Walk every Image XObject reachable from the document's pages and recompress
+ * and/or downsample as the config dictates. Modifies the PDFDocument in place.
+ *
+ * Each image decides independently whether to be re-encoded: if recompress is
+ * on, all are; if only resize is on, just the oversized ones are. The quality
+ * setting is applied to whatever images do get re-encoded.
  */
 function recompressAllImages(
   mupdf: typeof import("mupdf"),
   pdf: MupdfPDFDocument,
-  quality: number
+  config: ImageProcessConfig
 ): void {
   const seen = new Set<number>();
   const pageCount = pdf.countPages();
   for (let i = 0; i < pageCount; i++) {
     const pageObj = pdf.findPage(i);
     const resources = pageObj.getInheritable("Resources");
-    walkResourcesForRecompression(mupdf, pdf, resources, seen, quality);
+    walkResourcesForRecompression(mupdf, pdf, resources, seen, config);
   }
 }
 
@@ -776,6 +811,115 @@ function imageToPdf(
   pdf.insertPage(-1, pageObj);
 
   return pdf;
+}
+
+/**
+ * Build a single image-derived page inside `outputPdf` from the source
+ * image-derived PDF, applying the given image processing config (resize +
+ * recompress). The source is expected to be an image-derived PDF created
+ * by imageToPdf (single page, single image XObject named "Img").
+ *
+ * The new page is sized to the chosen paper size when resize is on, or to
+ * the image's natural physical size otherwise. The image is centred and
+ * scaled to fit within the page bounds preserving aspect ratio.
+ */
+function appendProcessedImagePage(
+  mupdf: typeof import("mupdf"),
+  outputPdf: MupdfPDFDocument,
+  sourcePdf: MupdfPDFDocument,
+  config: ImageProcessConfig
+): void {
+  // Pull the source image XObject off the source's first page.
+  const sourcePage = sourcePdf.findPage(0);
+  const resources = sourcePage.get("Resources");
+  const xobjs = resources.get("XObject");
+  const imgObj = xobjs.get("Img");
+  const sourceImage = sourcePdf.loadImage(imgObj);
+
+  let processedImage: InstanceType<typeof mupdf.Image> = sourceImage;
+  let imageOwnedHere = false; // Whether we created the image ourselves and must destroy it
+
+  try {
+    const srcW = sourceImage.getWidth();
+    const srcH = sourceImage.getHeight();
+    const target = fitWithinResizeCap(srcW, srcH, config.resize);
+
+    // Caller already gated on config.recompress (it's the master toggle), so
+    // we always re-encode. Resize is just an optional pre-step before the
+    // JPEG re-encode.
+    if (config.recompress) {
+      const pixmap = sourceImage.toPixmap();
+      try {
+        let pixmapToEncode = pixmap;
+        let resized: InstanceType<typeof mupdf.Pixmap> | null = null;
+        try {
+          if (target.scaled) {
+            const corners: [number, number][] = [
+              [0, 0],
+              [srcW, 0],
+              [srcW, srcH],
+              [0, srcH],
+            ];
+            resized = pixmap.warp(corners, target.width, target.height);
+            pixmapToEncode = resized;
+          }
+          const jpegBytes = pixmapToEncode.asJPEG(config.quality).slice();
+          processedImage = new mupdf.Image(jpegBytes);
+          imageOwnedHere = true;
+        } finally {
+          if (resized) resized.destroy();
+        }
+      } finally {
+        pixmap.destroy();
+      }
+    }
+
+    // Page dimensions: paper size when resize is active, natural size otherwise.
+    let pageW: number;
+    let pageH: number;
+    if (isResizeActive(config.resize)) {
+      const { shortPt, longPt } = pageSizeInPoints(
+        // Safe: isResizeActive guards out "Original"
+        config.resize.pageSize as Exclude<typeof config.resize.pageSize, "Original">
+      );
+      const imgLandscape = processedImage.getWidth() >= processedImage.getHeight();
+      pageW = imgLandscape ? longPt : shortPt;
+      pageH = imgLandscape ? shortPt : longPt;
+    } else {
+      const xRes = processedImage.getXResolution() || 72;
+      const yRes = processedImage.getYResolution() || 72;
+      pageW = (processedImage.getWidth() / xRes) * 72;
+      pageH = (processedImage.getHeight() / yRes) * 72;
+    }
+
+    // Fit image into page bounds preserving aspect ratio, then centre.
+    const imgAspect = processedImage.getWidth() / processedImage.getHeight();
+    const pageAspect = pageW / pageH;
+    let drawW: number;
+    let drawH: number;
+    if (imgAspect > pageAspect) {
+      drawW = pageW;
+      drawH = pageW / imgAspect;
+    } else {
+      drawH = pageH;
+      drawW = pageH * imgAspect;
+    }
+    const drawX = (pageW - drawW) / 2;
+    const drawY = (pageH - drawH) / 2;
+
+    const imgRef = outputPdf.addImage(processedImage);
+    const newResources = outputPdf.addObject(outputPdf.newDictionary());
+    const newXObjs = outputPdf.newDictionary();
+    newXObjs.put("Img", imgRef);
+    newResources.put("XObject", newXObjs);
+
+    const contents = `q ${drawW} 0 0 ${drawH} ${drawX} ${drawY} cm /Img Do Q`;
+    const pageObj = outputPdf.addPage([0, 0, pageW, pageH], 0, newResources, contents);
+    outputPdf.insertPage(-1, pageObj);
+  } finally {
+    if (imageOwnedHere) processedImage.destroy();
+    sourceImage.destroy();
+  }
 }
 
 const api = {
@@ -1280,7 +1424,12 @@ const api = {
    * automatically via MuPDF's graft deduplication.
    */
   async mergeFromHandles(
-    pageSpecs: { handle: number; pageIndex: number; rotation: number }[],
+    pageSpecs: {
+      handle: number;
+      pageIndex: number;
+      rotation: number;
+      imageProcess?: ImageProcessConfig;
+    }[],
     metadata?: PdfMetadata
   ): Promise<Uint8Array> {
     const mupdf = await getMupdf();
@@ -1302,9 +1451,19 @@ const api = {
       for (const spec of pageSpecs) {
         const { doc: sourceDoc } = getDoc(spec.handle);
         const destIndex = output.countPages();
-        output.graftPage(destIndex, sourceDoc as InstanceType<typeof mupdf.PDFDocument>, spec.pageIndex);
 
-        // Apply rotation to the grafted page if needed
+        if (spec.imageProcess) {
+          // Image-derived source — rebuild the page from the image bytes with
+          // the requested resize / recompress applied. This bypasses graftPage
+          // because we want a fresh page sized to the configured paper size.
+          const sourcePdf = sourceDoc.asPDF();
+          if (!sourcePdf) throw new Error("Image-process spec requires a PDF source");
+          appendProcessedImagePage(mupdf, output, sourcePdf, spec.imageProcess);
+        } else {
+          output.graftPage(destIndex, sourceDoc as InstanceType<typeof mupdf.PDFDocument>, spec.pageIndex);
+        }
+
+        // Apply rotation to the page if needed
         if (spec.rotation !== 0) {
           const pageObj = output.findPage(destIndex);
           const current = pageObj.get("Rotate")?.asNumber() ?? 0;
@@ -1349,8 +1508,8 @@ const api = {
         output.graftPage(i, sourcePdf, i);
       }
 
-      if (config.recompressImages) {
-        recompressAllImages(mupdf, output, config.imageQuality);
+      if (config.imageProcess.recompress) {
+        recompressAllImages(mupdf, output, config.imageProcess);
       }
 
       if (config.subsetFonts) {
@@ -1391,8 +1550,8 @@ const api = {
     try {
       output.graftPage(0, sourcePdf, pageIndex);
 
-      if (config.recompressImages) {
-        recompressAllImages(mupdf, output, config.imageQuality);
+      if (config.imageProcess.recompress) {
+        recompressAllImages(mupdf, output, config.imageProcess);
       }
 
       const { matrix, normalizedBbox } = buildPageMatrix(mupdf, output, 0, dpi, 0);

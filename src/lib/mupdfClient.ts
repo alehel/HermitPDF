@@ -2,6 +2,7 @@ import * as Comlink from "comlink";
 import type { MupdfWorkerApi } from "@/workers/mupdf.worker";
 import { retrieveDoc } from "./pdfStore";
 import type { PageRef, PdfMetadata, ExtractedImage, ImagePosition, BatesConfig, CompressConfig } from "./types";
+import type { ImageProcessConfig } from "./imageResize";
 
 let worker: Comlink.Remote<MupdfWorkerApi> | null = null;
 
@@ -300,10 +301,16 @@ export async function decryptPdf(docId: string): Promise<Uint8Array> {
   })());
 }
 
-/** Merge pages into a single PDF using document handles for resource deduplication. */
+/** Merge pages into a single PDF using document handles for resource deduplication.
+ *
+ * `imageProcessByDocId` lets the caller pass an `ImageProcessConfig` for
+ * specific image-derived source documents. Pages from those docs get rebuilt
+ * (resize + recompress) instead of grafted as-is.
+ */
 export async function mergePdfs(
   pageRefs: PageRef[],
-  metadata?: PdfMetadata
+  metadata?: PdfMetadata,
+  imageProcessByDocId?: Map<string, ImageProcessConfig>
 ): Promise<Uint8Array> {
   // Ensure all unique source documents are loaded
   const uniqueDocIds = [...new Set(pageRefs.map((p) => p.sourceDocId))];
@@ -317,6 +324,7 @@ export async function mergePdfs(
     handle: handleMap.get(p.sourceDocId)!,
     pageIndex: p.sourcePageIndex,
     rotation: p.rotation,
+    imageProcess: imageProcessByDocId?.get(p.sourceDocId),
   }));
 
   // Track the merge op against every source doc so a concurrent release on any

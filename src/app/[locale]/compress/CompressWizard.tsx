@@ -15,6 +15,7 @@ import { releaseWizardFile } from "@/lib/releaseWizardFile";
 import { DEFAULT_COMPRESS_CONFIG, compressedFilename } from "@/lib/compress";
 import { compressPdf, renderCompressedPreview } from "@/lib/mupdfClient";
 import { downloadPdf } from "@/lib/pdfExport";
+import { ImageProcessSettings } from "@/components/ImageProcessSettings";
 import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 import { useDelayedFlag } from "@/hooks/useDelayedFlag";
 import { useDropZone } from "@/hooks/useDropZone";
@@ -30,8 +31,10 @@ interface CompressionResult {
 
 function configsEqual(a: CompressConfig, b: CompressConfig): boolean {
   return (
-    a.recompressImages === b.recompressImages &&
-    a.imageQuality === b.imageQuality &&
+    a.imageProcess.recompress === b.imageProcess.recompress &&
+    a.imageProcess.quality === b.imageProcess.quality &&
+    a.imageProcess.resize.pageSize === b.imageProcess.resize.pageSize &&
+    a.imageProcess.resize.dpi === b.imageProcess.resize.dpi &&
     a.subsetFonts === b.subsetFonts &&
     a.deduplicateObjects === b.deduplicateObjects &&
     a.sanitizeStreams === b.sanitizeStreams
@@ -293,54 +296,21 @@ export function CompressWizard() {
               </h3>
 
               <div className="space-y-4 rounded-xl border border-border bg-card p-4">
-                {/* Recompress images toggle */}
-                <label className="flex items-center gap-3">
-                  <button
-                    type="button"
-                    role="switch"
-                    aria-checked={config.recompressImages}
-                    onClick={() => setConfig((c) => ({ ...c, recompressImages: !c.recompressImages }))}
-                    className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors ${
-                      config.recompressImages ? "bg-primary" : "bg-border"
-                    }`}
-                  >
-                    <span
-                      className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform ${
-                        config.recompressImages ? "translate-x-4" : "translate-x-0.5"
-                      }`}
-                    />
-                  </button>
-                  <div>
-                    <span className="text-sm font-medium text-foreground">{t("recompressImages")}</span>
-                    <p className="text-xs text-muted-foreground">{t("recompressImagesDesc")}</p>
-                  </div>
-                </label>
-
-                {/* Image quality slider */}
-                <div className={config.recompressImages ? "" : "opacity-40"}>
-                  <div className="mb-2 flex items-center justify-between">
-                    <span className="text-xs font-medium text-muted-foreground">
-                      {t("imageQuality")}
-                    </span>
-                    <span className="text-xs font-medium text-foreground tabular-nums">
-                      {config.imageQuality}%
-                    </span>
-                  </div>
-                  <input
-                    type="range"
-                    min={30}
-                    max={100}
-                    step={5}
-                    value={config.imageQuality}
-                    onChange={(e) => setConfig((c) => ({ ...c, imageQuality: e.target.valueAsNumber }))}
-                    disabled={!config.recompressImages}
-                    className="w-full accent-primary"
-                  />
-                  <div className="mt-1 flex justify-between text-[10px] text-muted-foreground">
-                    <span>{t("smaller")}</span>
-                    <span>{t("higherQuality")}</span>
-                  </div>
-                </div>
+                <ImageProcessSettings
+                  config={config.imageProcess}
+                  onChange={(next) => setConfig((c) => ({ ...c, imageProcess: next }))}
+                  labels={{
+                    recompressImages: t("recompressImages"),
+                    recompressImagesDesc: t("recompressImagesDesc"),
+                    imageQuality: t("imageQuality"),
+                    smaller: t("smaller"),
+                    higherQuality: t("higherQuality"),
+                    pageSize: t("pageSize"),
+                    dpi: t("dpi"),
+                    originalSize: t("originalSize"),
+                    resizeHint: t("resizeHint"),
+                  }}
+                />
 
                 {/* Divider */}
                 <div className="h-px bg-border" />
