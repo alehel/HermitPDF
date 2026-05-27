@@ -15,6 +15,7 @@ import { releaseWizardFile } from "@/lib/releaseWizardFile";
 import { DEFAULT_COMPRESS_CONFIG, compressedFilename } from "@/lib/compress";
 import { compressPdf, renderCompressedPreview } from "@/lib/mupdfClient";
 import { downloadPdf } from "@/lib/pdfExport";
+import { PAGE_SIZE_KEYS, DPI_PRESETS, type PageSizeKey, type DpiPreset } from "@/lib/imageResize";
 import { useDelayedFlag } from "@/hooks/useDelayedFlag";
 import { useDropZone } from "@/hooks/useDropZone";
 import { useFileInput } from "@/hooks/useFileInput";
@@ -33,7 +34,10 @@ function configsEqual(a: CompressConfig, b: CompressConfig): boolean {
     a.imageQuality === b.imageQuality &&
     a.subsetFonts === b.subsetFonts &&
     a.deduplicateObjects === b.deduplicateObjects &&
-    a.sanitizeStreams === b.sanitizeStreams
+    a.sanitizeStreams === b.sanitizeStreams &&
+    a.resize.enabled === b.resize.enabled &&
+    a.resize.pageSize === b.resize.pageSize &&
+    a.resize.dpi === b.resize.dpi
   );
 }
 
@@ -313,6 +317,72 @@ export function CompressWizard() {
                     <span>{t("smaller")}</span>
                     <span>{t("higherQuality")}</span>
                   </div>
+                </div>
+
+                {/* Divider */}
+                <div className="h-px bg-border" />
+
+                {/* Resize images toggle */}
+                <label className="flex items-center gap-3">
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={config.resize.enabled}
+                    onClick={() => setConfig((c) => ({ ...c, resize: { ...c.resize, enabled: !c.resize.enabled } }))}
+                    className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors ${
+                      config.resize.enabled ? "bg-primary" : "bg-border"
+                    }`}
+                  >
+                    <span
+                      className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform ${
+                        config.resize.enabled ? "translate-x-4" : "translate-x-0.5"
+                      }`}
+                    />
+                  </button>
+                  <div>
+                    <span className="text-sm font-medium text-foreground">{t("resizeImages")}</span>
+                    <p className="text-xs text-muted-foreground">{t("resizeImagesDesc")}</p>
+                  </div>
+                </label>
+
+                {/* Page size + DPI dropdowns */}
+                <div className={`grid grid-cols-2 gap-3 ${config.resize.enabled ? "" : "opacity-40"}`}>
+                  <label className="block">
+                    <span className="mb-1 block text-xs font-medium text-muted-foreground">{t("pageSize")}</span>
+                    <select
+                      value={config.resize.pageSize}
+                      onChange={(e) =>
+                        setConfig((c) => ({
+                          ...c,
+                          resize: { ...c.resize, pageSize: e.target.value as PageSizeKey },
+                        }))
+                      }
+                      disabled={!config.resize.enabled}
+                      className="w-full rounded-lg border border-border bg-background px-2 py-1 text-sm text-foreground focus:border-primary focus:outline-none"
+                    >
+                      {PAGE_SIZE_KEYS.map((key) => (
+                        <option key={key} value={key}>{key}</option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="block">
+                    <span className="mb-1 block text-xs font-medium text-muted-foreground">{t("dpi")}</span>
+                    <select
+                      value={config.resize.dpi}
+                      onChange={(e) =>
+                        setConfig((c) => ({
+                          ...c,
+                          resize: { ...c.resize, dpi: Number(e.target.value) as DpiPreset },
+                        }))
+                      }
+                      disabled={!config.resize.enabled}
+                      className="w-full rounded-lg border border-border bg-background px-2 py-1 text-sm text-foreground focus:border-primary focus:outline-none"
+                    >
+                      {DPI_PRESETS.map((dpi) => (
+                        <option key={dpi} value={dpi}>{dpi}</option>
+                      ))}
+                    </select>
+                  </label>
                 </div>
 
                 {/* Divider */}
