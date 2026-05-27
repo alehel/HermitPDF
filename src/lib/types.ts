@@ -69,15 +69,13 @@ export interface BatesConfig {
   shrink: boolean;
 }
 
-import type { ResizeConfig } from "./imageResize";
+import type { ImageProcessConfig } from "./imageResize";
 
 export interface CompressConfig {
-  recompressImages: boolean;
-  imageQuality: number;
+  imageProcess: ImageProcessConfig;
   subsetFonts: boolean;
   deduplicateObjects: boolean;
   sanitizeStreams: boolean;
-  resize: ResizeConfig;
 }
 
 export function formatFileSize(bytes: number): string {

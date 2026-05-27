@@ -35,12 +35,10 @@ type BatesStampWorkerConfig = {
 };
 
 type CompressWorkerConfig = {
-  recompressImages: boolean;
-  imageQuality: number;
+  imageProcess: ImageProcessConfig;
   subsetFonts: boolean;
   deduplicateObjects: boolean;
   sanitizeStreams: boolean;
-  resize: ResizeConfig;
 };
 
 // Aliases for MuPDF runtime instance types so signatures stay readable.
@@ -1505,8 +1503,8 @@ const api = {
         output.graftPage(i, sourcePdf, i);
       }
 
-      if (config.recompressImages || config.resize.enabled) {
-        recompressAllImages(mupdf, output, config.imageQuality, config.resize);
+      if (config.imageProcess.recompress || config.imageProcess.resize.enabled) {
+        recompressAllImages(mupdf, output, config.imageProcess.quality, config.imageProcess.resize);
       }
 
       if (config.subsetFonts) {
@@ -1547,8 +1545,8 @@ const api = {
     try {
       output.graftPage(0, sourcePdf, pageIndex);
 
-      if (config.recompressImages || config.resize.enabled) {
-        recompressAllImages(mupdf, output, config.imageQuality, config.resize);
+      if (config.imageProcess.recompress || config.imageProcess.resize.enabled) {
+        recompressAllImages(mupdf, output, config.imageProcess.quality, config.imageProcess.resize);
       }
 
       const { matrix, normalizedBbox } = buildPageMatrix(mupdf, output, 0, dpi, 0);
