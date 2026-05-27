@@ -78,6 +78,16 @@ export interface CompressConfig {
   sanitizeStreams: boolean;
 }
 
+export interface OutlineEntry {
+  id: string;
+  title: string;
+  level: number;
+  pageStart: number;
+  pageEnd: number;
+  hasChildren: boolean;
+  parentId: string | null;
+}
+
 export function formatFileSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
