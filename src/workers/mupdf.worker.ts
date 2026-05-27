@@ -12,6 +12,7 @@ import {
 } from "@/lib/batesStamp";
 import {
   fitWithinResizeCap,
+  isResizeActive,
   pageSizeInPoints,
   type ImageProcessConfig,
 } from "@/lib/imageResize";
@@ -635,15 +636,10 @@ function recompressImageXObject(
   // the savings, and the artifacts are more visible at small sizes.
   if (w < 100 || h < 100) return;
 
-  const targetSize = config.resize.enabled
-    ? fitWithinResizeCap(w, h, config.resize)
-    : { width: w, height: h, scaled: false };
-
-  // Re-encode only when the user asked to (recompress) or when resize forces
-  // it (the image actually got scaled). Otherwise leave the original bytes
-  // alone — resize-on with no oversized images shouldn't touch anything.
-  if (!config.recompress && !targetSize.scaled) return;
-
+  // Caller already gated on config.recompress, so we always re-encode here.
+  // fitWithinResizeCap returns a no-op {scaled:false} when pageSize is
+  // "Original", so we can call it unconditionally.
+  const targetSize = fitWithinResizeCap(w, h, config.resize);
   const quality = config.quality;
 
   // ImageMasks are 1-bit stencils; recompressing as JPEG would silently
@@ -846,14 +842,12 @@ function appendProcessedImagePage(
   try {
     const srcW = sourceImage.getWidth();
     const srcH = sourceImage.getHeight();
-    const target = config.resize.enabled
-      ? fitWithinResizeCap(srcW, srcH, config.resize)
-      : { width: srcW, height: srcH, scaled: false };
+    const target = fitWithinResizeCap(srcW, srcH, config.resize);
 
-    // Re-encode only when the user opted in (recompress) or when resize
-    // forced this image to be downsampled. If neither, keep the original
-    // image bytes intact and just rebuild the page below at the new size.
-    if (config.recompress || target.scaled) {
+    // Caller already gated on config.recompress (it's the master toggle), so
+    // we always re-encode. Resize is just an optional pre-step before the
+    // JPEG re-encode.
+    if (config.recompress) {
       const pixmap = sourceImage.toPixmap();
       try {
         let pixmapToEncode = pixmap;
@@ -869,8 +863,6 @@ function appendProcessedImagePage(
             resized = pixmap.warp(corners, target.width, target.height);
             pixmapToEncode = resized;
           }
-          // Quality always comes from the slider. The slider is enabled
-          // whenever either toggle is on, so the value is the user's choice.
           const jpegBytes = pixmapToEncode.asJPEG(config.quality).slice();
           processedImage = new mupdf.Image(jpegBytes);
           imageOwnedHere = true;
@@ -882,11 +874,14 @@ function appendProcessedImagePage(
       }
     }
 
-    // Page dimensions: resize-configured paper size, else natural physical size.
+    // Page dimensions: paper size when resize is active, natural size otherwise.
     let pageW: number;
     let pageH: number;
-    if (config.resize.enabled) {
-      const { shortPt, longPt } = pageSizeInPoints(config.resize.pageSize);
+    if (isResizeActive(config.resize)) {
+      const { shortPt, longPt } = pageSizeInPoints(
+        // Safe: isResizeActive guards out "Original"
+        config.resize.pageSize as Exclude<typeof config.resize.pageSize, "Original">
+      );
       const imgLandscape = processedImage.getWidth() >= processedImage.getHeight();
       pageW = imgLandscape ? longPt : shortPt;
       pageH = imgLandscape ? shortPt : longPt;
@@ -1513,7 +1508,7 @@ const api = {
         output.graftPage(i, sourcePdf, i);
       }
 
-      if (config.imageProcess.recompress || config.imageProcess.resize.enabled) {
+      if (config.imageProcess.recompress) {
         recompressAllImages(mupdf, output, config.imageProcess);
       }
 
@@ -1555,7 +1550,7 @@ const api = {
     try {
       output.graftPage(0, sourcePdf, pageIndex);
 
-      if (config.imageProcess.recompress || config.imageProcess.resize.enabled) {
+      if (config.imageProcess.recompress) {
         recompressAllImages(mupdf, output, config.imageProcess);
       }
 

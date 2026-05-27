@@ -102,7 +102,9 @@ export function MergeWizard() {
       const stacks = files.map((f) => f.stack);
       // Apply image processing only to image-derived files, and only when at
       // least one of the toggles would actually change something.
-      const willProcess = hasImageFiles && (imageConfig.recompress || imageConfig.resize.enabled);
+      // Only forward an image-process config when the master toggle is on;
+      // otherwise let mergeFromHandles graft image-derived pages as-is.
+      const willProcess = hasImageFiles && imageConfig.recompress;
       const imageProcessByDocId = willProcess
         ? new Map(imageFiles.map((f) => [f.sourceDocId, imageConfig]))
         : undefined;
@@ -216,10 +218,9 @@ export function MergeWizard() {
                     imageQuality: t("imageQuality"),
                     smaller: t("smaller"),
                     higherQuality: t("higherQuality"),
-                    resizeImages: t("resizeImages"),
-                    resizeImagesDesc: t("resizeImagesDesc"),
                     pageSize: t("pageSize"),
                     dpi: t("dpi"),
+                    originalSize: t("originalSize"),
                   }}
                 />
               </div>
