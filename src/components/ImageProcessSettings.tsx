@@ -19,6 +19,8 @@ export interface ImageProcessLabels {
   dpi: string;
   /** Label shown for the no-resize entry in the page-size dropdown. */
   originalSize: string;
+  /** Help text describing what the size constraint + DPI do, with DPI usage hints. */
+  resizeHint: string;
 }
 
 interface ImageProcessSettingsProps {
@@ -134,6 +136,13 @@ export function ImageProcessSettings({
           </select>
         </label>
       </div>
+
+      {/* Help text spans both columns so the size-constraint + DPI explanation
+          stays readable. Dims with the rest of the controls when the master
+          toggle is off. */}
+      <p className={`text-xs text-muted-foreground ${enabled ? "" : "opacity-40"}`}>
+        {labels.resizeHint}
+      </p>
     </>
   );
 }
