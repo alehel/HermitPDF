@@ -136,7 +136,18 @@
     "passwordProtectedFiles": "Skipped password-protected files: {files}",
     "dismiss": "Dismiss",
     "back": "Back",
-    "oversizedFiles": "Files too large to load (max 1 GB): {files}"
+    "oversizedFiles": "Files too large to load (max 1 GB): {files}",
+    "imageSettings": "Image settings",
+    "imageSettingsHint": "Applied to image files only ({count, plural, =1 {1 image} other {# images}} in this merge).",
+    "recompressImages": "Recompress images",
+    "recompressImagesDesc": "Re-encode each image as JPEG, optionally capped to a paper size.",
+    "imageQuality": "Image quality",
+    "smaller": "smaller",
+    "higherQuality": "higher quality",
+    "pageSize": "Size constraint",
+    "dpi": "DPI",
+    "originalSize": "Original size",
+    "resizeHint": "Caps image dimensions so they fit the chosen paper at the chosen DPI. Use 72 for on-screen viewing, 150 for general print, 300 for photo-quality print."
   },
   "splitWizard": {
     "title": "Split PDF",
@@ -317,7 +328,7 @@
     "file": "File",
     "configuration": "Compression settings",
     "recompressImages": "Recompress images",
-    "recompressImagesDesc": "Re-encode embedded images as JPEG. The biggest source of savings for image-heavy PDFs.",
+    "recompressImagesDesc": "Re-encode embedded images as JPEG, optionally capped to a paper size. The biggest source of savings for image-heavy PDFs.",
     "imageQuality": "Image quality",
     "smaller": "smaller",
     "higherQuality": "higher quality",
@@ -358,7 +369,11 @@
     "dismiss": "Dismiss",
     "back": "Back",
     "remove": "Remove file",
-    "oversizedFiles": "Files too large to load (max 1 GB): {files}"
+    "oversizedFiles": "Files too large to load (max 1 GB): {files}",
+    "pageSize": "Size constraint",
+    "dpi": "DPI",
+    "originalSize": "Original size",
+    "resizeHint": "Caps image dimensions so they fit the chosen paper at the chosen DPI. Use 72 for on-screen viewing, 150 for general print, 300 for photo-quality print."
   },
   "extractImagesWizard": {
     "title": "Extract Images",
