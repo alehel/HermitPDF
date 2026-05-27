@@ -2,7 +2,7 @@
 declare var $libmupdf_wasm_Module: unknown;
 
 import * as Comlink from "comlink";
-import type { BatesPosition, ExtractedImage } from "@/lib/types";
+import type { BatesPosition, ExtractedImage, OutlineEntry } from "@/lib/types";
 import {
   formatBatesNumber,
   computeShrinkTransform,
@@ -1373,6 +1373,61 @@ const api = {
     } finally {
       output.destroy();
     }
+  },
+
+  /**
+   * Flatten the document's outline (bookmarks) into a list with pre-computed
+   * page ranges. Each entry's pageEnd is derived from the next entry at the
+   * same or shallower level — so a parent's range naturally spans its subtree.
+   * Returns null when the document has no outline; entries whose target is a
+   * URI rather than a page are skipped (children still recurse).
+   */
+  loadOutline(handle: number): OutlineEntry[] | null {
+    const { doc } = getDoc(handle);
+    const outline = doc.loadOutline();
+    if (!outline || outline.length === 0) return null;
+
+    const pageCount = doc.countPages();
+    const entries: OutlineEntry[] = [];
+    let nextId = 0;
+
+    type RawItem = { title?: string; page?: number; down?: RawItem[] };
+    const walk = (items: RawItem[], level: number, parentId: string | null) => {
+      for (const item of items) {
+        const page = typeof item.page === "number" ? item.page : -1;
+        const children = item.down;
+        if (page < 0) {
+          if (children) walk(children, level, parentId);
+          continue;
+        }
+        const myId = `o${nextId++}`;
+        entries.push({
+          id: myId,
+          title: item.title?.trim() || "(untitled)",
+          level,
+          pageStart: page,
+          pageEnd: pageCount - 1,
+          hasChildren: !!(children && children.length > 0),
+          parentId,
+        });
+        if (children) walk(children, level + 1, myId);
+      }
+    };
+    walk(outline as unknown as RawItem[], 0, null);
+
+    for (let i = 0; i < entries.length; i++) {
+      const me = entries[i];
+      let end = pageCount - 1;
+      for (let j = i + 1; j < entries.length; j++) {
+        if (entries[j].level <= me.level) {
+          end = Math.max(me.pageStart, entries[j].pageStart - 1);
+          break;
+        }
+      }
+      me.pageEnd = end;
+    }
+
+    return entries;
   },
 
   /**
