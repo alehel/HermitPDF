@@ -221,6 +221,7 @@ export function MergeWizard() {
                     pageSize: t("pageSize"),
                     dpi: t("dpi"),
                     originalSize: t("originalSize"),
+                    resizeHint: t("resizeHint"),
                   }}
                 />
               </div>

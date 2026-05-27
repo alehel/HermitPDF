@@ -146,7 +146,8 @@
     "higherQuality": "higher quality",
     "pageSize": "Size constraint",
     "dpi": "DPI",
-    "originalSize": "Original size"
+    "originalSize": "Original size",
+    "resizeHint": "Caps image dimensions so they fit the chosen paper at the chosen DPI. Use 72 for on-screen viewing, 150 for general print, 300 for photo-quality print."
   },
   "splitWizard": {
     "title": "Split PDF",
@@ -369,7 +370,8 @@
     "oversizedFiles": "Files too large to load (max 1 GB): {files}",
     "pageSize": "Size constraint",
     "dpi": "DPI",
-    "originalSize": "Original size"
+    "originalSize": "Original size",
+    "resizeHint": "Caps image dimensions so they fit the chosen paper at the chosen DPI. Use 72 for on-screen viewing, 150 for general print, 300 for photo-quality print."
   },
   "extractImagesWizard": {
     "title": "Extract Images",

@@ -281,6 +281,7 @@ export function CompressWizard() {
                     pageSize: t("pageSize"),
                     dpi: t("dpi"),
                     originalSize: t("originalSize"),
+                    resizeHint: t("resizeHint"),
                   }}
                 />
 
