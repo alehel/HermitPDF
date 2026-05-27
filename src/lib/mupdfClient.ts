@@ -300,6 +300,24 @@ export async function decryptPdf(docId: string): Promise<Uint8Array> {
   })());
 }
 
+/** Page bounding boxes in PDF user units (points). */
+export async function getAllPageBounds(
+  docId: string
+): Promise<{ widthPt: number; heightPt: number }[]> {
+  return trackOp(docId, (async () => {
+    const handle = await ensureLoaded(docId);
+    return getWorker().getAllPageBounds(handle);
+  })());
+}
+
+/** Build a PDF where each page is a single JPEG. Used by the contrast wizard. */
+export async function buildPdfFromJpegPages(
+  pages: { data: ArrayBuffer; widthPt: number; heightPt: number }[]
+): Promise<Uint8Array> {
+  const transferables = pages.map((p) => p.data);
+  return getWorker().buildPdfFromJpegPages(Comlink.transfer(pages, transferables));
+}
+
 /** Merge pages into a single PDF using document handles for resource deduplication. */
 export async function mergePdfs(
   pageRefs: PageRef[],
