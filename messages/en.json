@@ -136,7 +136,18 @@
     "passwordProtectedFiles": "Skipped password-protected files: {files}",
     "dismiss": "Dismiss",
     "back": "Back",
-    "oversizedFiles": "Files too large to load (max 1 GB): {files}"
+    "oversizedFiles": "Files too large to load (max 1 GB): {files}",
+    "imageSettings": "Image settings",
+    "imageSettingsHint": "Applied to image files only ({count, plural, =1 {1 image} other {# images}} in this merge).",
+    "recompressImages": "Recompress images",
+    "recompressImagesDesc": "Re-encode each image as JPEG to reduce file size.",
+    "imageQuality": "Image quality",
+    "smaller": "smaller",
+    "higherQuality": "higher quality",
+    "resizeImages": "Resize images",
+    "resizeImagesDesc": "Cap image pixels by paper size and DPI.",
+    "pageSize": "Page size",
+    "dpi": "DPI"
   },
   "splitWizard": {
     "title": "Split PDF",
@@ -356,7 +367,11 @@
     "dismiss": "Dismiss",
     "back": "Back",
     "remove": "Remove file",
-    "oversizedFiles": "Files too large to load (max 1 GB): {files}"
+    "oversizedFiles": "Files too large to load (max 1 GB): {files}",
+    "resizeImages": "Resize images",
+    "resizeImagesDesc": "Cap embedded image pixels by paper size and DPI.",
+    "pageSize": "Page size",
+    "dpi": "DPI"
   },
   "extractImagesWizard": {
     "title": "Extract Images",
