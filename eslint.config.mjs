@@ -12,6 +12,8 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Local git worktrees, each a full src/ copy plus generated .next output.
+    ".claude/**",
   ]),
 ]);
 
