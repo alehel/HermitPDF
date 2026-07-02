@@ -1,5 +1,6 @@
 import type { ExtractedImage } from "./types";
 import { buildZip } from "./zipBuilder";
+import { downloadBlob } from "./download";
 
 /** Strip the .pdf extension from a filename so it can be used as a base for derived files. */
 export function pdfNameStem(name: string): string {
@@ -18,26 +19,13 @@ export function buildExtractedImageFilename(
   return `${stem}_p${img.pageIndex + 1}_img${img.imageIndex + 1}.${img.extension}`;
 }
 
-/** Trigger a browser download from a Blob. */
-function triggerBlobDownload(blob: Blob, filename: string): void {
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
-}
-
 /** Download a single image with an explicit mime type. */
 export function downloadSingleImage(
   data: Uint8Array,
   filename: string,
   mimeType: string = "image/png"
 ): void {
-  const blob = new Blob([data as BlobPart], { type: mimeType });
-  triggerBlobDownload(blob, filename);
+  downloadBlob(new Blob([data as BlobPart], { type: mimeType }), filename);
 }
 
 /**
@@ -64,8 +52,6 @@ export function downloadImages(
     data: img.data,
   }));
 
-  const zipData = buildZip(entries);
   const zipName = multiDoc ? "hermitpdf_images.zip" : `${stem}_images.zip`;
-  const blob = new Blob([zipData as BlobPart], { type: "application/zip" });
-  triggerBlobDownload(blob, zipName);
+  downloadBlob(buildZip(entries), zipName);
 }

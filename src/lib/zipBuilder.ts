@@ -1,21 +1,30 @@
+import { downloadBlob } from "./download";
+
 /**
  * Minimal ZIP writer for stored (uncompressed) entries.
- * PNGs are already compressed, so storing them avoids redundant work.
+ * PNGs, JPEGs, and PDFs are already compressed, so storing them avoids
+ * redundant work.
+ *
+ * Returns a Blob assembled from the original entry arrays plus small header
+ * chunks — entry bytes are never copied into an intermediate buffer, so the
+ * peak JS-heap cost of zipping is just the headers. (A Blob also lets the
+ * browser manage the assembled bytes itself, including keeping large ones
+ * out of the JS heap entirely.)
  *
  * Implements the PKZIP APPNOTE format:
  * https://pkware.cachefly.net/webdocs/casestudies/APPNOTE.TXT
  */
-export function buildZip(entries: { name: string; data: Uint8Array }[]): Uint8Array {
-  const localHeaders: Uint8Array[] = [];
-  const centralHeaders: Uint8Array[] = [];
+export function buildZip(entries: { name: string; data: Uint8Array }[]): Blob {
+  const parts: BlobPart[] = [];
+  const centralHeaders: Uint8Array<ArrayBuffer>[] = [];
   let offset = 0;
 
   for (const entry of entries) {
     const nameBytes = new TextEncoder().encode(entry.name);
     const crc = crc32(entry.data);
 
-    // Local file header (APPNOTE 4.3.7): 30 fixed bytes + name + data
-    const local = new Uint8Array(30 + nameBytes.length + entry.data.length);
+    // Local file header (APPNOTE 4.3.7): 30 fixed bytes + name; data follows
+    const local = new Uint8Array(30 + nameBytes.length);
     const localView = new DataView(local.buffer);
     localView.setUint32(0, 0x04034b50, true);  // local file header signature
     localView.setUint16(4, 20, true);           // version needed to extract (2.0)
@@ -29,8 +38,7 @@ export function buildZip(entries: { name: string; data: Uint8Array }[]): Uint8Ar
     localView.setUint16(26, nameBytes.length, true);  // file name length
     localView.setUint16(28, 0, true);           // extra field length
     local.set(nameBytes, 30);
-    local.set(entry.data, 30 + nameBytes.length);
-    localHeaders.push(local);
+    parts.push(local, entry.data as BlobPart);
 
     // Central directory header (APPNOTE 4.3.12): 46 fixed bytes + name
     const central = new Uint8Array(46 + nameBytes.length);
@@ -55,7 +63,7 @@ export function buildZip(entries: { name: string; data: Uint8Array }[]): Uint8Ar
     central.set(nameBytes, 46);
     centralHeaders.push(central);
 
-    offset += local.length;
+    offset += local.length + entry.data.length;
   }
 
   const centralOffset = offset;
@@ -74,43 +82,43 @@ export function buildZip(entries: { name: string; data: Uint8Array }[]): Uint8Ar
   eocdView.setUint32(16, centralOffset, true);   // offset of start of central directory
   eocdView.setUint16(20, 0, true);              // ZIP file comment length
 
-  // Combine all parts: local file entries, then central directory, then EOCD
-  const totalSize = offset + centralSize + 22;
-  const zip = new Uint8Array(totalSize);
-  let pos = 0;
-  for (const localHeader of localHeaders) { zip.set(localHeader, pos); pos += localHeader.length; }
-  for (const centralHeader of centralHeaders) { zip.set(centralHeader, pos); pos += centralHeader.length; }
-  zip.set(eocd, pos);
-
-  return zip;
+  // Layout: local file entries, then central directory, then EOCD
+  parts.push(...centralHeaders, eocd);
+  return new Blob(parts, { type: "application/zip" });
 }
 
 /** Trigger a browser download of a ZIP file. */
-export function downloadZip(data: Uint8Array, filename: string): void {
-  const blob = new Blob([data as BlobPart], { type: "application/zip" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
+export function downloadZip(zip: Blob, filename: string): void {
+  downloadBlob(zip, filename);
 }
 
 /**
  * CRC-32 computation for ZIP file entries.
  * Uses the standard polynomial 0xEDB88320 — the bit-reversed form of the
- * CRC-32 polynomial (ISO 3309 / ITU-T V.42), enabling a right-shift
- * implementation instead of left-shift.
+ * CRC-32 polynomial (ISO 3309 / ITU-T V.42) — via a 256-entry lookup table.
+ * The table form processes one byte per step instead of eight bit shifts,
+ * which matters when zipping hundreds of megabytes of extracted images.
  */
+let crcTable: Uint32Array | null = null;
+
+function getCrcTable(): Uint32Array {
+  if (crcTable) return crcTable;
+  crcTable = new Uint32Array(256);
+  for (let n = 0; n < 256; n++) {
+    let c = n;
+    for (let k = 0; k < 8; k++) {
+      c = (c >>> 1) ^ (c & 1 ? 0xedb88320 : 0);
+    }
+    crcTable[n] = c;
+  }
+  return crcTable;
+}
+
 function crc32(data: Uint8Array): number {
+  const table = getCrcTable();
   let crc = 0xffffffff;
   for (let i = 0; i < data.length; i++) {
-    crc ^= data[i];
-    for (let j = 0; j < 8; j++) {
-      crc = (crc >>> 1) ^ (crc & 1 ? 0xedb88320 : 0);
-    }
+    crc = (crc >>> 8) ^ table[(crc ^ data[i]) & 0xff];
   }
   return (crc ^ 0xffffffff) >>> 0;
 }
