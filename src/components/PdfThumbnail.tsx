@@ -9,7 +9,6 @@ interface PdfThumbnailProps {
   pageRef: PageRef;
   width?: number;
   className?: string;
-  version?: number;
   /**
    * Optional height/width ratio for the slot. When provided, every thumbnail
    * uses a slot of this exact shape — the img inside scales to fit while
@@ -26,7 +25,6 @@ export function PdfThumbnail({
   pageRef,
   width = 120,
   className = "",
-  version,
   boxAspectRatio,
 }: PdfThumbnailProps) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -99,7 +97,7 @@ export function PdfThumbnail({
       cancelled = true;
       observer.disconnect();
     };
-  }, [pageRef.id, pageRef.sourceDocId, pageRef.sourcePageIndex, width, version, dataUrl]);
+  }, [pageRef.id, pageRef.sourceDocId, pageRef.sourcePageIndex, width, dataUrl]);
 
   // Slot dimensions. With `boxAspectRatio`, every slot in the grid has the
   // same shape — the caller picks a ratio that fits each page in its portrait

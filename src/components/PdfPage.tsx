@@ -7,7 +7,6 @@ import { PageRef, ImagePosition } from "@/lib/types";
 interface PdfPageProps {
   pageRef: PageRef;
   scale?: number;
-  version?: number;
   onImageContextMenu?: (
     event: React.MouseEvent,
     pageRef: PageRef,
@@ -15,7 +14,7 @@ interface PdfPageProps {
   ) => void;
 }
 
-export function PdfPage({ pageRef, scale = 1.5, version, onImageContextMenu }: PdfPageProps) {
+export function PdfPage({ pageRef, scale = 1.5, onImageContextMenu }: PdfPageProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [imagePositions, setImagePositions] = useState<ImagePosition[]>([]);
 
@@ -64,7 +63,7 @@ export function PdfPage({ pageRef, scale = 1.5, version, onImageContextMenu }: P
     return () => {
       cancelled = true;
     };
-  }, [pageRef.sourceDocId, pageRef.sourcePageIndex, pageRef.rotation, scale, version]);
+  }, [pageRef.sourceDocId, pageRef.sourcePageIndex, pageRef.rotation, scale]);
 
   const handleContextMenu = useCallback(
     (e: React.MouseEvent<HTMLCanvasElement>) => {

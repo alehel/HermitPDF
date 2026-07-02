@@ -30,30 +30,6 @@ import { useImageExtraction } from "@/hooks/useImageExtraction";
 
 const GRID_THRESHOLD = 500;
 
-// TODO(css-rotation): PdfThumbnail now applies rotation via CSS transform,
-// so a rotation change no longer invalidates the cached bitmap. This whole
-// function — and its call site in applyRestoredSnapshot — can be deleted.
-/** Compare rotation values between two stacks snapshots, clearing thumbnails for changed pages. */
-function reconcileThumbnails(prev: PageStack[], next: PageStack[]): string[] {
-  const changed: string[] = [];
-  const prevRotations = new Map<string, number>();
-  for (const stack of prev) {
-    for (const page of stack.pages) {
-      prevRotations.set(page.id, page.rotation);
-    }
-  }
-  for (const stack of next) {
-    for (const page of stack.pages) {
-      const oldRot = prevRotations.get(page.id);
-      if (oldRot !== undefined && oldRot !== page.rotation) {
-        clearThumbnail(page.id);
-        changed.push(page.id);
-      }
-    }
-  }
-  return changed;
-}
-
 export function WorkbenchClient() {
   const t = useTranslations("documentPanel");
   // --- Refs for history eviction callback (set after useHistory call) ---
@@ -115,10 +91,6 @@ export function WorkbenchClient() {
   const [selectedPageIds, setSelectedPageIds] = useState<Set<string>>(new Set());
   const [anchorPageId, setAnchorPageId] = useState<string | null>(null);
   const [scrollToPageId, setScrollToPageId] = useState<string | null>(null);
-  // TODO(css-rotation): only mutated to force a rotation re-render. CSS handles
-  // rotation now — this state, its setter, and the `version` prop plumbing
-  // through PageListItem / StackList can be removed.
-  const [thumbnailVersions, setThumbnailVersions] = useState<Map<string, number>>(new Map());
   const [activeTab, setActiveTab] = useState<"documents" | "preview">("documents");
   const [showPropertiesModal, setShowPropertiesModal] = useState(false);
   const [metadataSaveFailed, setMetadataSaveFailed] = useState(false);
@@ -190,15 +162,6 @@ export function WorkbenchClient() {
 
   // --- Undo / Redo ---
 
-  const invalidateThumbnails = useCallback((pageIds: string[]) => {
-    for (const id of pageIds) clearThumbnail(id);
-    setThumbnailVersions((prev) => {
-      const next = new Map(prev);
-      for (const id of pageIds) next.set(id, (prev.get(id) ?? 0) + 1);
-      return next;
-    });
-  }, []);
-
   const pruneSelectionAfterRestore = useCallback(
     (restoredStacks: PageStack[]) => {
       const survivingIds = new Set(restoredStacks.flatMap((s) => s.pages.map((p) => p.id)));
@@ -212,23 +175,19 @@ export function WorkbenchClient() {
   );
 
   const applyRestoredSnapshot = useCallback(
-    (prevStacks: PageStack[], restored: HistorySnapshot | null) => {
+    (restored: HistorySnapshot | null) => {
       if (!restored) return;
-
-      const changed = reconcileThumbnails(prevStacks, restored.stacks);
-      if (changed.length > 0) invalidateThumbnails(changed);
-
       pruneSelectionAfterRestore(restored.stacks);
     },
-    [invalidateThumbnails, pruneSelectionAfterRestore]
+    [pruneSelectionAfterRestore]
   );
 
   const handleUndo = useCallback(() => {
-    applyRestoredSnapshot(stacksRef.current, undo());
+    applyRestoredSnapshot(undo());
   }, [undo, applyRestoredSnapshot]);
 
   const handleRedo = useCallback(() => {
-    applyRestoredSnapshot(stacksRef.current, redo());
+    applyRestoredSnapshot(redo());
   }, [redo, applyRestoredSnapshot]);
 
   useUndoRedoShortcuts(handleUndo, handleRedo);
@@ -523,6 +482,9 @@ export function WorkbenchClient() {
     commit({ stacks: nextStacks, expandedStackIds: nextExpanded });
   }, [commit]);
 
+  // Rotation is display-only until export: PdfThumbnail applies it via CSS
+  // transform and PdfPage re-renders from its pageRef prop, so no thumbnail
+  // invalidation is needed — cached bitmaps stay valid across rotations.
   const applyRotation = useCallback((pageIds: string[], degrees: number) => {
     const idsSet = new Set(pageIds);
     const nextStacks = stacksRef.current.map((stack) => ({
@@ -534,11 +496,7 @@ export function WorkbenchClient() {
       ),
     }));
     commit({ stacks: nextStacks, expandedStackIds: expandedRef.current });
-    // TODO(css-rotation): no longer needed — CSS transform on the cached
-    // bitmap handles rotation. Drop this call (and the dep) to skip the
-    // re-rasterization storm when rotating a large selection.
-    invalidateThumbnails(pageIds);
-  }, [commit, invalidateThumbnails]);
+  }, [commit]);
 
   const resolveRotationTargets = useCallback((): string[] | null => {
     return selectedPageIds.size > 0 ? Array.from(selectedPageIds) : null;
@@ -638,7 +596,6 @@ export function WorkbenchClient() {
     selectedPageIds,
     onPageClick: handlePageClick,
     onStackClick: handleStackClick,
-    thumbnailVersions,
     onExtractPageImages: handleExtractPageImages,
     onExtractStackImages: handleExtractStackImages,
     onDeselect: handleDeselect,
@@ -649,7 +606,6 @@ export function WorkbenchClient() {
     handleToggleExpand, handleReorderPage, handleExtractPageToList,
     handleInsertStackIntoExpanded, handleMovePageBetweenStacks,
     selectedPageIds, handlePageClick, handleStackClick,
-    thumbnailVersions,
     handleExtractPageImages, handleExtractStackImages,
     handleDeselect,
   ]);
@@ -741,7 +697,6 @@ export function WorkbenchClient() {
               stacks={stacks}
               scrollToPageId={scrollToPageId}
               onScrollComplete={() => setScrollToPageId(null)}
-              thumbnailVersions={thumbnailVersions}
             />
           )
         ) : (
@@ -760,7 +715,6 @@ export function WorkbenchClient() {
                   style={previewWidth > 0 ? { width: previewWidth, flex: "none" } : { flex: "0.4 1 0%" }}
                   scrollToPageId={scrollToPageId}
                   onScrollComplete={() => setScrollToPageId(null)}
-                  thumbnailVersions={thumbnailVersions}
                 />
               </>
             )}

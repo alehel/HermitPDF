@@ -26,7 +26,6 @@ interface WorkspaceProps {
   style?: React.CSSProperties;
   scrollToPageId?: string | null;
   onScrollComplete?: () => void;
-  thumbnailVersions?: Map<string, number>;
 }
 
 export function Workspace({
@@ -35,7 +34,6 @@ export function Workspace({
   style,
   scrollToPageId,
   onScrollComplete,
-  thumbnailVersions,
 }: WorkspaceProps) {
   const t = useTranslations("workspace");
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -182,7 +180,6 @@ export function Workspace({
                   <div className="flex flex-col items-center py-2">
                     <PdfPage
                       pageRef={item.pageRef}
-                      version={thumbnailVersions?.get(item.pageRef.id)}
                       onImageContextMenu={handleImageContextMenu}
                     />
                   </div>
