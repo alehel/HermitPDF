@@ -3,6 +3,7 @@ import type { MupdfWorkerApi } from "@/workers/mupdf.worker";
 import { retrieveDoc } from "./pdfStore";
 import type { PageRef, PdfMetadata, ExtractedImage, ImagePosition, BatesConfig, CompressConfig, OutlineEntry } from "./types";
 import type { ImageProcessConfig } from "./imageResize";
+import type { ContrastConfig } from "./contrast";
 
 let worker: Comlink.Remote<MupdfWorkerApi> | null = null;
 
@@ -16,11 +17,23 @@ function getWorker(): Comlink.Remote<MupdfWorkerApi> {
   return worker;
 }
 
-// LRU cache for worker document handles.
-// Caps the number of simultaneously open MuPDF documents in WASM memory.
-// Re-opening an evicted document from the in-memory ArrayBuffer costs ~1-2ms.
+// LRU cache for worker document handles, capped by both handle count and
+// total resident bytes. An open document keeps (at least) its full file bytes
+// in MuPDF's WASM heap, and that heap only ever grows — so the byte cap is
+// what actually bounds peak memory; the count cap keeps pathological
+// many-tiny-docs sessions in check. Re-opening an evicted document is an
+// OPFS read + parse (typically a few milliseconds).
 const MAX_HANDLES = 20;
-const handles = new Map<string, number>(); // insertion-order = LRU order
+const MAX_RESIDENT_BYTES = 512 * 1024 * 1024;
+const handles = new Map<string, { handle: number; bytes: number }>(); // insertion-order = LRU order
+let residentBytes = 0;
+
+// Coalesces concurrent loads of the same document. Without this, two
+// components mounting at once (e.g. a stack card and its expansion box, both
+// thumbnailing the same doc) would each miss the cache and open the document
+// twice — the second handle overwrites the first in `handles`, and the first
+// is never released.
+const loading = new Map<string, Promise<number>>();
 
 // Tracks in-flight worker ops per docId so `releaseDocument` can defer
 // destroying the MuPDF doc until pending calls have settled. Without this,
@@ -57,34 +70,44 @@ async function ensureLoaded(docId: string): Promise<number> {
     // Move to end (most-recently-used) by re-inserting
     handles.delete(docId);
     handles.set(docId, existing);
-    return existing;
+    return existing.handle;
   }
 
-  // Evict least-recently-used handle if at capacity. Skip docs with in-flight
-  // ops — destroying them mid-call would break the worker call. If everything
-  // is in-flight (rare), proceed without evicting and let the cap drift.
-  if (handles.size >= MAX_HANDLES) {
-    let evict: string | undefined;
-    for (const candidate of handles.keys()) {
-      if (!inFlightOps.has(candidate)) {
-        evict = candidate;
-        break;
-      }
+  const inFlight = loading.get(docId);
+  if (inFlight) return inFlight;
+
+  const load = (async () => {
+    const data = await retrieveDoc(docId);
+    if (!data) throw new Error(`No document data for ${docId}`);
+
+    // Evict least-recently-used handles until both caps are satisfied. Skip
+    // docs with in-flight ops — destroying them mid-call would break the
+    // worker call. If everything is in-flight (rare), proceed without
+    // evicting and let the caps drift.
+    for (const [candidate, entry] of handles) {
+      const overCount = handles.size >= MAX_HANDLES;
+      const overBytes = residentBytes + data.byteLength > MAX_RESIDENT_BYTES;
+      if (!overCount && !overBytes) break;
+      if (inFlightOps.has(candidate)) continue;
+      handles.delete(candidate);
+      residentBytes -= entry.bytes;
+      getWorker().releaseDocument(entry.handle);
     }
-    if (evict !== undefined) {
-      const oldHandle = handles.get(evict)!;
-      handles.delete(evict);
-      getWorker().releaseDocument(oldHandle);
-    }
+
+    const bytes = data.byteLength;
+    const w = getWorker();
+    const handle = await w.openDocument(Comlink.transfer(data, [data]), docMagic.get(docId));
+    handles.set(docId, { handle, bytes });
+    residentBytes += bytes;
+    return handle;
+  })();
+
+  loading.set(docId, load);
+  try {
+    return await load;
+  } finally {
+    loading.delete(docId);
   }
-
-  const data = await retrieveDoc(docId);
-  if (!data) throw new Error(`No document data for ${docId}`);
-
-  const w = getWorker();
-  const handle = await w.openDocument(Comlink.transfer(data, [data]), docMagic.get(docId));
-  handles.set(docId, handle);
-  return handle;
 }
 
 export async function loadDocument(docId: string): Promise<void> {
@@ -152,10 +175,11 @@ export async function releaseDocument(docId: string): Promise<void> {
   if (pending && pending.size > 0) {
     await Promise.allSettled([...pending]);
   }
-  const handle = handles.get(docId);
-  if (handle !== undefined) {
-    getWorker().releaseDocument(handle);
+  const entry = handles.get(docId);
+  if (entry !== undefined) {
+    getWorker().releaseDocument(entry.handle);
     handles.delete(docId);
+    residentBytes -= entry.bytes;
   }
   docMagic.delete(docId);
 }
@@ -301,22 +325,54 @@ export async function decryptPdf(docId: string): Promise<Uint8Array> {
   })());
 }
 
-/** Page bounding boxes in PDF user units (points). */
-export async function getAllPageBounds(
-  docId: string
-): Promise<{ widthPt: number; heightPt: number }[]> {
-  return trackOp(docId, (async () => {
-    const handle = await ensureLoaded(docId);
-    return getWorker().getAllPageBounds(handle);
-  })());
+/** Per-page image encoding for the contrast export. */
+export type ContrastPageEncoding =
+  | { format: "png" }
+  | { format: "jpeg"; quality: number };
+
+export interface ContrastExportBuilder {
+  /** Render, filter, encode, and append one source page to the build. */
+  addPage(
+    docId: string,
+    pageIndex: number,
+    dpi: number,
+    config: ContrastConfig,
+    encoding: ContrastPageEncoding
+  ): Promise<void>;
+  /** Save the finished PDF and discard the build. */
+  finish(): Promise<Uint8Array>;
+  /** Discard the build. Safe to call unconditionally, even after finish(). */
+  abort(): Promise<void>;
 }
 
-/** Build a PDF where each page is a single embedded image. Used by the contrast wizard. */
-export async function buildPdfFromImagePages(
-  pages: { data: ArrayBuffer; widthPt: number; heightPt: number }[]
-): Promise<Uint8Array> {
-  const transferables = pages.map((p) => p.data);
-  return getWorker().buildPdfFromImagePages(Comlink.transfer(pages, transferables));
+/**
+ * Incrementally build a PDF whose pages are rasterized, contrast-filtered
+ * images of a document's pages. Used by the contrast wizard's export.
+ *
+ * Rendering, filtering, and encoding all happen inside the worker, one page
+ * per addPage call — no pixel data crosses the worker boundary and the main
+ * thread never holds more than control messages, so peak memory stays flat
+ * no matter how many pages the document has. Each addPage is tracked against
+ * the source doc so it can't be evicted or released mid-export.
+ */
+export function beginContrastExport(): ContrastExportBuilder {
+  const buildId = getWorker().imagePdfBegin();
+  return {
+    addPage: (docId, pageIndex, dpi, config, encoding) =>
+      trackOp(docId, (async () => {
+        const handle = await ensureLoaded(docId);
+        return getWorker().imagePdfAddContrastPage(
+          await buildId,
+          handle,
+          pageIndex,
+          dpi,
+          config,
+          encoding
+        );
+      })()),
+    finish: async () => getWorker().imagePdfFinish(await buildId),
+    abort: async () => getWorker().imagePdfAbort(await buildId),
+  };
 }
 
 /** Load the document outline (bookmarks) as a flat list with page ranges. */
@@ -341,24 +397,37 @@ export async function mergePdfs(
   metadata?: PdfMetadata,
   imageProcessByDocId?: Map<string, ImageProcessConfig>
 ): Promise<Uint8Array> {
-  // Ensure all unique source documents are loaded
   const uniqueDocIds = [...new Set(pageRefs.map((p) => p.sourceDocId))];
-  const handleMap = new Map<string, number>();
-  for (const docId of uniqueDocIds) {
-    handleMap.set(docId, await ensureLoaded(docId));
+
+  // Pin every source doc for the whole merge span. Loading handles below can
+  // trigger LRU evictions, and a doc without an in-flight op is fair game —
+  // so with more unique sources than the handle cap, doc #1 would be evicted
+  // before mergeFromHandles ever ran and the merge would fail with "No
+  // document for handle N". The pin also makes a concurrent releaseDocument
+  // on any source wait until the merge settles.
+  let unpin!: () => void;
+  const pin = new Promise<void>((resolve) => {
+    unpin = resolve;
+  });
+  for (const docId of uniqueDocIds) void trackOp(docId, pin);
+
+  try {
+    // Ensure all unique source documents are loaded
+    const handleMap = new Map<string, number>();
+    for (const docId of uniqueDocIds) {
+      handleMap.set(docId, await ensureLoaded(docId));
+    }
+
+    // Build page specs using handles
+    const pageSpecs = pageRefs.map((p) => ({
+      handle: handleMap.get(p.sourceDocId)!,
+      pageIndex: p.sourcePageIndex,
+      rotation: p.rotation,
+      imageProcess: imageProcessByDocId?.get(p.sourceDocId),
+    }));
+
+    return await getWorker().mergeFromHandles(pageSpecs, metadata);
+  } finally {
+    unpin();
   }
-
-  // Build page specs using handles
-  const pageSpecs = pageRefs.map((p) => ({
-    handle: handleMap.get(p.sourceDocId)!,
-    pageIndex: p.sourcePageIndex,
-    rotation: p.rotation,
-    imageProcess: imageProcessByDocId?.get(p.sourceDocId),
-  }));
-
-  // Track the merge op against every source doc so a concurrent release on any
-  // of them waits for the merge to finish.
-  const merge = getWorker().mergeFromHandles(pageSpecs, metadata);
-  for (const docId of uniqueDocIds) trackOp(docId, merge);
-  return merge;
 }
