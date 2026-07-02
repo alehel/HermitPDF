@@ -26,10 +26,8 @@ import type { WizardFile } from "@/lib/types";
 
 interface SortableFileListProps {
   files: WizardFile[];
-  dragKey: string;
   onRemove: (id: string) => void;
   onReorder: (fromIndex: number, toIndex: number) => void;
-  onFilesAdded: (files: FileList) => void;
   openFilePicker: () => void;
   isDragOver: boolean;
   dropZoneHandlers: {

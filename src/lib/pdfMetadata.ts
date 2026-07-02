@@ -15,7 +15,11 @@ export function loadSavedMetadata(): PdfMetadata {
   }
   if (!raw) return emptyMetadata();
   try {
-    return JSON.parse(raw);
+    // Merge onto defaults so fields added after the value was stored (or a
+    // partially-corrupt value) can't surface as `undefined` in the UI.
+    const parsed: unknown = JSON.parse(raw);
+    if (parsed === null || typeof parsed !== "object") return emptyMetadata();
+    return { ...emptyMetadata(), ...(parsed as Partial<PdfMetadata>) };
   } catch (err) {
     console.warn("Failed to parse saved PDF metadata; using defaults.", err);
     return emptyMetadata();

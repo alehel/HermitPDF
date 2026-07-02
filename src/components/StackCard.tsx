@@ -5,7 +5,8 @@ import clsx from "clsx";
 import { useTranslations } from "next-intl";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { PageStack, formatFileSize } from "@/lib/types";
+import { PageStack } from "@/lib/types";
+import { formatSize } from "@/lib/formatSize";
 import { CloseIcon, EyeIcon, EyeOffIcon } from "./Icons";
 import { PdfThumbnail } from "./PdfThumbnail";
 
@@ -212,7 +213,7 @@ export const StackCard = memo(function StackCard({
           {stack.name}
         </p>
         <p className="text-[11px] text-muted-foreground">
-          {formatFileSize(stack.size)}
+          {formatSize(stack.size)}
         </p>
       </div>
       {expandButton}

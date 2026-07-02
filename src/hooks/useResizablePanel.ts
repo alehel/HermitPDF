@@ -30,8 +30,10 @@ export function useResizablePanel(containerRef: React.RefObject<HTMLDivElement |
     const el = containerRef.current;
     const cw = el ? el.getBoundingClientRect().width : 0;
     const stored = localStorage.getItem(STORAGE_KEY);
-    if (stored) {
-      const parsed = parseInt(stored, 10);
+    // A non-numeric stored value would turn the clamp into NaN and break the
+    // panel layout, so fall through to the ratio/default branches instead.
+    const parsed = stored ? parseInt(stored, 10) : NaN;
+    if (!Number.isNaN(parsed)) {
       const maxPreview = cw > 0 ? cw - MIN_LEFT - DIVIDER_WIDTH : parsed;
       setPreviewWidth(Math.min(maxPreview, Math.max(MIN_RIGHT, parsed)));
     } else if (cw > 0) {

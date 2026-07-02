@@ -80,15 +80,6 @@ export function PlusIcon(props: IconProps) {
   );
 }
 
-export function UploadIcon(props: IconProps) {
-  return (
-    <Icon size={24} strokeWidth={1.3} {...props}>
-      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-      <polyline points="17 8 12 3 7 8" />
-      <line x1="12" y1="3" x2="12" y2="15" />
-    </Icon>
-  );
-}
 
 export function DownloadIcon(props: IconProps) {
   return (
@@ -186,16 +177,6 @@ export function ChevronDownIcon(props: IconProps) {
   );
 }
 
-export function CompactIcon(props: IconProps) {
-  return (
-    <Icon size={16} strokeWidth={2} {...props}>
-      <polyline points="4 14 10 14 10 20" />
-      <polyline points="20 10 14 10 14 4" />
-      <line x1="14" y1="10" x2="21" y2="3" />
-      <line x1="3" y1="21" x2="10" y2="14" />
-    </Icon>
-  );
-}
 
 export function FileIcon(props: IconProps) {
   return (
@@ -299,15 +280,6 @@ export function FileDocIcon(props: IconProps) {
   );
 }
 
-export function UploadCloudIcon(props: IconProps) {
-  return (
-    <Icon size={48} strokeWidth={1.2} {...props}>
-      <polyline points="16 16 12 12 8 16" />
-      <line x1="12" y1="12" x2="12" y2="21" />
-      <path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3" />
-    </Icon>
-  );
-}
 
 export function FilePlusIcon(props: IconProps) {
   return (
