@@ -47,9 +47,10 @@ Open [http://localhost:3000](http://localhost:3000) to view the app.
 ### Other commands
 
 ```bash
-npm run build   # Production build
-npm run start   # Start production server
-npm run lint    # Run ESLint
+npm run build     # Production build
+npm run start     # Start production server
+npm run lint      # Run ESLint
+npm run test:e2e  # Browser end-to-end tests (Playwright; needs `npx playwright install chromium` once)
 ```
 
 ## Self-hosting with Docker
