@@ -18,6 +18,7 @@ import {
 } from "@/components/Icons";
 import { QuickActionCard } from "@/components/QuickActionCard";
 import { Footer } from "@/components/Footer";
+import { isSelfHostedBuild } from "@/lib/deployment";
 
 export async function generateMetadata({
   params,
@@ -53,18 +54,25 @@ export default async function Home({
 
       {/* Main content */}
       <main className="flex flex-1 flex-col items-center justify-center px-6 pb-16">
-        {/* Hero */}
-        <div className="mb-12 text-center">
-          <Image
-            src="/hermitpdf-icon.svg"
-            alt=""
-            width={48}
-            height={48}
-            className="mx-auto mb-4"
-          />
-          <h1 className="text-3xl font-medium text-foreground">{t("welcome")}</h1>
-          <p className="mt-2 text-muted-foreground">{t("tagline")}</p>
-        </div>
+        {/* Hero — omitted on self-hosted builds: people running their own
+            instance don't need to be told what it is; the header logo
+            suffices. A visually-hidden h1 keeps the heading structure for
+            screen readers. */}
+        {isSelfHostedBuild ? (
+          <h1 className="sr-only">{t("welcome")}</h1>
+        ) : (
+          <div className="mb-12 text-center">
+            <Image
+              src="/hermitpdf-icon.svg"
+              alt=""
+              width={48}
+              height={48}
+              className="mx-auto mb-4"
+            />
+            <h1 className="text-3xl font-medium text-foreground">{t("welcome")}</h1>
+            <p className="mt-2 text-muted-foreground">{t("tagline")}</p>
+          </div>
+        )}
 
         {/* Quick actions */}
         <div className="mb-4 text-center">

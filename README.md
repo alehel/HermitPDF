@@ -10,7 +10,7 @@ HermitPDF is a free, open-source PDF editor that runs entirely in your browser. 
 
 No account, no paywall, no watermarks, no ads.
 
-Available at [hermitpdf.com](https://hermitpdf.com). Docker container image for self hosting coming soon.
+Available at [hermitpdf.com](https://hermitpdf.com), or self-host it with Docker (see below).
 
 ## Features
 
@@ -51,6 +51,18 @@ npm run build   # Production build
 npm run start   # Start production server
 npm run lint    # Run ESLint
 ```
+
+## Self-hosting with Docker
+
+```bash
+docker build -t hermitpdf .
+docker run -p 3000:3000 hermitpdf
+```
+
+The image is the self-hosted distribution: the home page skips the
+introductory hero (people running their own instance already know what it
+is — the header logo suffices). To keep the full home page, build with
+`--build-arg SELF_HOSTED=0`.
 
 ## AI Disclaimer
 
