@@ -507,6 +507,8 @@
     "textSizeUnit": "{size} pt",
     "keepLinks": "Keep hyperlinks clickable",
     "keepLinksDesc": "Preserve web links and in-page anchors as clickable PDF links.",
+    "adaptLayout": "Adapt modern layouts",
+    "adaptLayoutDesc": "Uses your browser's layout engine to rewrite flexbox and grid into structures the converter renders faithfully. Runs entirely on this device.",
     "localNote": "Conversion runs entirely in your browser. Remote images, stylesheets, and scripts are never fetched or executed — embedded (data:) images work. Complex modern CSS may render simplified; the preview shows exactly what you will get.",
     "preview": "Preview",
     "previewPage": "Page",

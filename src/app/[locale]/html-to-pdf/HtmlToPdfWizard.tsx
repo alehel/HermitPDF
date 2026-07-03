@@ -12,6 +12,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { formatSize } from "@/lib/formatSize";
 import { checkerboardStyle } from "@/lib/utils";
 import {
+  contentWidthCssPx,
   DEFAULT_HTML_TO_PDF_CONFIG,
   HTML_ACCEPT,
   HTML_MARGIN_SETTINGS,
@@ -27,10 +28,12 @@ import {
   isHtmlFile,
   resolveLayoutOptions,
   urlPdfFilename,
+  type HtmlLayoutOptions,
   type HtmlPageSizeKey,
   type HtmlToPdfConfig,
 } from "@/lib/htmlToPdf";
 import { fetchHtmlPage, FetchPageError } from "@/lib/fetchHtmlPage";
+import { lowerHtmlForPdf, mightNeedLowering } from "@/lib/lowerHtml";
 import { convertHtmlToPdf, renderHtmlPreview } from "@/lib/mupdfClient";
 import { downloadPdf } from "@/lib/pdfExport";
 import { useDebouncedValue } from "@/hooks/useDebouncedValue";
@@ -111,6 +114,7 @@ export function HtmlToPdfWizard() {
   const reqIdRef = useRef(0);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const previewBoxRef = useRef<HTMLDivElement>(null);
+  const lowerCacheRef = useRef<{ html: string; width: number; out: string } | null>(null);
 
   // Unlike the PDF wizards there is no OPFS storage and no worker-side
   // document handle to release — the HTML lives only in React state and every
@@ -224,6 +228,27 @@ export function HtmlToPdfWizard() {
     setPreviewFailed(false);
   }, []);
 
+  /* ---- Layout lowering: rewrite flex/grid via the browser engine so mupdf
+     lays them out faithfully. Cached per html+content-width (the width
+     changes the browser's wrap points); any failure falls back to the raw
+     HTML so conversion never breaks on it. ---- */
+  const prepareHtml = useCallback(
+    async (raw: string, options: HtmlLayoutOptions, adapt: boolean): Promise<string> => {
+      if (!adapt || !mightNeedLowering(raw)) return raw;
+      const width = contentWidthCssPx(options);
+      const cache = lowerCacheRef.current;
+      if (cache && cache.html === raw && cache.width === width) return cache.out;
+      try {
+        const out = await lowerHtmlForPdf(raw, width);
+        lowerCacheRef.current = { html: raw, width, out };
+        return out;
+      } catch {
+        return raw;
+      }
+    },
+    []
+  );
+
   /* ---- Live preview: debounced re-layout + render of the current page.
      The monotonic request id drops superseded results (Strict Mode double
      mounts, or the user typing faster than the worker lays out). ---- */
@@ -240,9 +265,16 @@ export function HtmlToPdfWizard() {
         const dpr = window.devicePixelRatio || 1;
         const cssWidth = previewBoxRef.current?.clientWidth ?? 600;
         const targetWidthPx = Math.min(1600, Math.round(cssWidth * dpr));
-        const result = await renderHtmlPreview(
+        const layoutOptions = resolveLayoutOptions(debouncedConfig);
+        const prepared = await prepareHtml(
           debouncedHtml,
-          resolveLayoutOptions(debouncedConfig),
+          layoutOptions,
+          debouncedConfig.adaptLayout
+        );
+        if (reqIdRef.current !== myReqId) return; // superseded during lowering
+        const result = await renderHtmlPreview(
+          prepared,
+          layoutOptions,
           debouncedPreviewPage - 1,
           targetWidthPx
         );
@@ -261,7 +293,7 @@ export function HtmlToPdfWizard() {
         if (reqIdRef.current === myReqId) setIsPreviewLoading(false);
       }
     })();
-  }, [isEmpty, debouncedHtml, debouncedConfig, debouncedPreviewPage]);
+  }, [isEmpty, debouncedHtml, debouncedConfig, debouncedPreviewPage, prepareHtml]);
 
   /* ---- Paint preview to canvas ---- */
   useEffect(() => {
@@ -282,7 +314,9 @@ export function HtmlToPdfWizard() {
     try {
       const title = extractHtmlTitle(html);
       const baseUrl = source?.origin === "url" ? source.url : undefined;
-      const { bytes } = await convertHtmlToPdf(html, resolveLayoutOptions(config, title, baseUrl));
+      const layoutOptions = resolveLayoutOptions(config, title, baseUrl);
+      const prepared = await prepareHtml(html, layoutOptions, config.adaptLayout);
+      const { bytes } = await convertHtmlToPdf(prepared, layoutOptions);
       const filename =
         source?.origin === "file"
           ? htmlPdfFilename(source.name)
@@ -295,7 +329,7 @@ export function HtmlToPdfWizard() {
     } finally {
       setIsExporting(false);
     }
-  }, [html, config, source, t]);
+  }, [html, config, source, t, prepareHtml]);
 
   const htmlByteSize = useMemo(() => (html ? new Blob([html]).size : 0), [html]);
 
@@ -637,6 +671,32 @@ export function HtmlToPdfWizard() {
                     <div>
                       <span className="text-sm font-medium text-foreground">{t("keepLinks")}</span>
                       <p className="text-xs text-muted-foreground">{t("keepLinksDesc")}</p>
+                    </div>
+                  </label>
+
+                  <div className="h-px bg-border" />
+
+                  <label className="flex items-center gap-3">
+                    <button
+                      type="button"
+                      role="switch"
+                      aria-checked={config.adaptLayout}
+                      onClick={() => setConfig((c) => ({ ...c, adaptLayout: !c.adaptLayout }))}
+                      className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors ${
+                        config.adaptLayout ? "bg-primary" : "bg-border"
+                      }`}
+                    >
+                      <span
+                        className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform ${
+                          config.adaptLayout ? "translate-x-4" : "translate-x-0.5"
+                        }`}
+                      />
+                    </button>
+                    <div>
+                      <span className="text-sm font-medium text-foreground">
+                        {t("adaptLayout")}
+                      </span>
+                      <p className="text-xs text-muted-foreground">{t("adaptLayoutDesc")}</p>
                     </div>
                   </label>
                 </div>

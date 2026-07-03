@@ -58,6 +58,8 @@ export interface HtmlToPdfConfig {
   /** Base font size in points — mupdf's layout `em` parameter. */
   emSize: number;
   keepLinks: boolean;
+  /** Rewrite flex/grid layouts with the browser engine before converting. */
+  adaptLayout: boolean;
 }
 
 export const DEFAULT_HTML_TO_PDF_CONFIG: HtmlToPdfConfig = {
@@ -67,6 +69,7 @@ export const DEFAULT_HTML_TO_PDF_CONFIG: HtmlToPdfConfig = {
   customMarginsMm: uniformMarginsMm(PRESET_MARGIN_MM.normal),
   emSize: 12,
   keepLinks: true,
+  adaptLayout: true,
 };
 
 /** Per-side margins in points, crossing the worker boundary. */
@@ -127,6 +130,17 @@ export function resolveLayoutOptions(
 export function htmlPdfFilename(stem: string | null): string {
   if (!stem) return "document.pdf";
   return stem.replace(HTML_FILENAME_RE, "") + ".pdf";
+}
+
+/**
+ * The content-box width in CSS pixels for a given layout — the viewport
+ * width the layout-lowering iframe must use so the browser wraps lines and
+ * flex/grid rows at the same width mupdf will lay out to (1px = 0.75pt).
+ */
+export function contentWidthCssPx(options: HtmlLayoutOptions): number {
+  return Math.round(
+    ((options.pageWidthPt - options.marginsPt.left - options.marginsPt.right) * 96) / 72
+  );
 }
 
 /** Derive a download filename from a page URL: last path segment, else host. */
