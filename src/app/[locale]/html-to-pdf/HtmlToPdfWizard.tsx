@@ -299,6 +299,42 @@ export function HtmlToPdfWizard() {
 
   const htmlByteSize = useMemo(() => (html ? new Blob([html]).size : 0), [html]);
 
+  // One margin field, reused at the four compass positions of the custom grid.
+  const marginInput = (side: "top" | "right" | "bottom" | "left") => (
+    <label className="block">
+      <span className="mb-1 block text-center text-xs font-medium text-muted-foreground">
+        {t(`margin_${side}` as Parameters<typeof t>[0])}
+      </span>
+      <div className="flex items-center justify-center gap-1">
+        <input
+          type="number"
+          min={0}
+          max={MAX_MARGIN_MM}
+          step={1}
+          value={config.customMarginsMm[side]}
+          onChange={(e) => {
+            const v = e.target.valueAsNumber;
+            if (isNaN(v)) return;
+            setConfig((c) => ({
+              ...c,
+              customMarginsMm: { ...c.customMarginsMm, [side]: v },
+            }));
+          }}
+          onBlur={(e) => {
+            const v = parseFloat(e.target.value);
+            const clamped = Math.min(MAX_MARGIN_MM, Math.max(0, isNaN(v) ? 0 : v));
+            setConfig((c) => ({
+              ...c,
+              customMarginsMm: { ...c.customMarginsMm, [side]: clamped },
+            }));
+          }}
+          className="w-16 rounded-lg border border-border bg-background px-2 py-1 text-sm text-foreground focus:border-primary focus:outline-none"
+        />
+        <span className="text-xs text-muted-foreground">{t("marginMmUnit")}</span>
+      </div>
+    </label>
+  );
+
   const pasteEditor = (
     <textarea
       rows={12}
@@ -541,46 +577,24 @@ export function HtmlToPdfWizard() {
                       ))}
                     </div>
                     {config.margin === "custom" && (
-                      <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
-                        {(["top", "right", "bottom", "left"] as const).map((side) => (
-                          <label key={side} className="block">
-                            <span className="mb-1 block text-xs font-medium text-muted-foreground">
-                              {t(`margin_${side}` as Parameters<typeof t>[0])}
-                            </span>
-                            <div className="flex items-center gap-1">
-                              <input
-                                type="number"
-                                min={0}
-                                max={MAX_MARGIN_MM}
-                                step={1}
-                                value={config.customMarginsMm[side]}
-                                onChange={(e) => {
-                                  const v = e.target.valueAsNumber;
-                                  if (isNaN(v)) return;
-                                  setConfig((c) => ({
-                                    ...c,
-                                    customMarginsMm: { ...c.customMarginsMm, [side]: v },
-                                  }));
-                                }}
-                                onBlur={(e) => {
-                                  const v = parseFloat(e.target.value);
-                                  const clamped = Math.min(
-                                    MAX_MARGIN_MM,
-                                    Math.max(0, isNaN(v) ? 0 : v)
-                                  );
-                                  setConfig((c) => ({
-                                    ...c,
-                                    customMarginsMm: { ...c.customMarginsMm, [side]: clamped },
-                                  }));
-                                }}
-                                className="w-full rounded-lg border border-border bg-background px-2 py-1 text-sm text-foreground focus:border-primary focus:outline-none"
-                              />
-                              <span className="text-xs text-muted-foreground">
-                                {t("marginMmUnit")}
-                              </span>
-                            </div>
-                          </label>
-                        ))}
+                      // Compass layout: each field sits on the side of the
+                      // page it controls, around a page-shaped glyph that
+                      // follows the chosen orientation.
+                      <div className="mt-3 grid grid-cols-3 items-center justify-items-center gap-x-2 gap-y-3">
+                        <div />
+                        {marginInput("top")}
+                        <div />
+                        {marginInput("left")}
+                        <div
+                          aria-hidden="true"
+                          className={`rounded-md border border-dashed border-border bg-background ${
+                            config.orientation === "portrait" ? "h-16 w-12" : "h-12 w-16"
+                          }`}
+                        />
+                        {marginInput("right")}
+                        <div />
+                        {marginInput("bottom")}
+                        <div />
                       </div>
                     )}
                   </div>
