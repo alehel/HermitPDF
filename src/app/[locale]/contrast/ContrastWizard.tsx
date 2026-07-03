@@ -13,7 +13,7 @@ import { formatSize } from "@/lib/formatSize";
 import { checkerboardStyle } from "@/lib/utils";
 import { releaseWizardFile } from "@/lib/releaseWizardFile";
 import {
-  applyContrastToImageData,
+  applyContrastToPixels,
   configsEqual,
   contrastFilename,
   DEFAULT_CONTRAST_CONFIG,
@@ -22,11 +22,7 @@ import {
   type ContrastConfig,
   type ExportDpiPreset,
 } from "@/lib/contrast";
-import {
-  buildPdfFromImagePages,
-  getAllPageBounds,
-  renderPage,
-} from "@/lib/mupdfClient";
+import { beginContrastExport, renderPage } from "@/lib/mupdfClient";
 import { downloadPdf } from "@/lib/pdfExport";
 import { useDelayedFlag } from "@/hooks/useDelayedFlag";
 import { useDropZone } from "@/hooks/useDropZone";
@@ -35,20 +31,6 @@ import { usePdfIngestion } from "@/hooks/usePdfIngestion";
 
 const PREVIEW_DPI = 100;
 const PRESETS: ExportDpiPreset[] = ["low", "medium", "high"];
-
-function canvasToBlob(
-  canvas: HTMLCanvasElement,
-  mimeType: string,
-  quality?: number
-): Promise<Blob> {
-  return new Promise((resolve, reject) => {
-    canvas.toBlob(
-      (blob) => (blob ? resolve(blob) : reject(new Error("toBlob returned null"))),
-      mimeType,
-      quality
-    );
-  });
-}
 
 export function ContrastWizard() {
   const t = useTranslations("contrastWizard");
@@ -149,7 +131,7 @@ export function ContrastWizard() {
         src.width,
         src.height
       );
-      applyContrastToImageData(copy.data, config);
+      applyContrastToPixels(copy.data, config);
       ctx.putImageData(copy, 0, 0);
     };
 
@@ -180,40 +162,30 @@ export function ContrastWizard() {
     if (!file) return;
     setIsExporting(true);
     setExportProgress({ done: 0, total: file.pageCount });
+
+    const dpi = DPI_FOR_PRESET[dpiPreset];
+    // Thresholded pages are pure black/white — JPEG would ring around the
+    // sharp transitions. PNG is lossless and compresses 1-bit-ish content
+    // very efficiently, so it beats JPEG on both quality and size here.
+    const encoding = config.thresholdEnabled
+      ? ({ format: "png" } as const)
+      : ({ format: "jpeg", quality: 90 } as const);
+
+    // Pages are rendered, filtered, and encoded one at a time inside the
+    // worker, so the whole export never holds more than one page's buffers —
+    // no matter how long the document is.
+    const build = beginContrastExport();
     try {
-      const bounds = await getAllPageBounds(file.sourceDocId);
-      const dpi = DPI_FOR_PRESET[dpiPreset];
-      const scale = dpi / 72;
-
-      const offscreen = document.createElement("canvas");
-      // Thresholded pages are pure black/white — JPEG would ring around the
-      // sharp transitions. PNG is lossless and compresses 1-bit-ish content
-      // very efficiently, so it beats JPEG on both quality and size here.
-      const mimeType = config.thresholdEnabled ? "image/png" : "image/jpeg";
-      const quality = config.thresholdEnabled ? undefined : 0.9;
-
-      const pages: { data: ArrayBuffer; widthPt: number; heightPt: number }[] = [];
       for (let i = 0; i < file.pageCount; i++) {
-        const imageData = await renderPage(file.sourceDocId, i, scale);
-        applyContrastToImageData(imageData.data, config);
-        offscreen.width = imageData.width;
-        offscreen.height = imageData.height;
-        const ctx = offscreen.getContext("2d");
-        if (!ctx) throw new Error("Could not get 2D context");
-        ctx.putImageData(imageData, 0, 0);
-        const blob = await canvasToBlob(offscreen, mimeType, quality);
-        const buf = await blob.arrayBuffer();
-        pages.push({
-          data: buf,
-          widthPt: bounds[i].widthPt,
-          heightPt: bounds[i].heightPt,
-        });
+        await build.addPage(file.sourceDocId, i, dpi, config, encoding);
         setExportProgress({ done: i + 1, total: file.pageCount });
       }
-
-      const data = await buildPdfFromImagePages(pages);
+      const data = await build.finish();
       downloadPdf(data, contrastFilename(file.name));
     } finally {
+      // No-op after a successful finish; frees the worker-side document if
+      // the export failed or was interrupted partway.
+      void build.abort();
       setIsExporting(false);
       setExportProgress(null);
     }

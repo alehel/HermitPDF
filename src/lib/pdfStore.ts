@@ -32,7 +32,6 @@ const writing = new Map<string, Promise<void>>();
 const removing = new Map<string, Promise<void>>();
 
 export function storeDoc(id: string, source: Blob): Promise<void> {
-  let self: Promise<void>;
   const run = async () => {
     try {
       const dir = await getDocsDir();
@@ -43,7 +42,7 @@ export function storeDoc(id: string, source: Blob): Promise<void> {
       if (writing.get(id) === self) writing.delete(id);
     }
   };
-  self = run();
+  const self: Promise<void> = run();
   writing.set(id, self);
   return self;
 }

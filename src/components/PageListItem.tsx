@@ -16,7 +16,6 @@ interface PageListItemProps {
   layout?: "row" | "tile";
   isFocused?: boolean;
   onClick?: (pageId: string, e: React.MouseEvent) => void;
-  version?: number;
 }
 
 export const PageListItem = memo(function PageListItem({
@@ -27,7 +26,6 @@ export const PageListItem = memo(function PageListItem({
   layout = "row",
   isFocused,
   onClick,
-  version,
 }: PageListItemProps) {
   const t = useTranslations("documentItem");
 
@@ -74,11 +72,7 @@ export const PageListItem = memo(function PageListItem({
           "flex items-center justify-center overflow-hidden rounded border border-border bg-card",
           isFocused && "ring-2 ring-primary"
         )}>
-          <PdfThumbnail
-            pageRef={pageRef}
-            width={80}
-            version={version}
-          />
+          <PdfThumbnail pageRef={pageRef} width={80} />
         </div>
         <p className="mt-1 text-[11px] text-muted-foreground">
           {t("pageLabel", { page: pageIndex + 1 })}
@@ -104,11 +98,7 @@ export const PageListItem = memo(function PageListItem({
         "flex h-[46px] w-[36px] shrink-0 items-center justify-center overflow-hidden rounded border border-border bg-card",
         isFocused && "ring-2 ring-primary"
       )}>
-        <PdfThumbnail
-          pageRef={pageRef}
-          width={36}
-          version={version}
-        />
+        <PdfThumbnail pageRef={pageRef} width={36} />
       </div>
       <p className="text-[12px] text-muted-foreground">
         {t("pageLabel", { page: pageIndex + 1 })}

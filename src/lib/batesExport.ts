@@ -15,7 +15,7 @@ export async function exportBatesPdfs(
   let runningPageNumber = config.startNumber;
 
   for (const file of files) {
-    const data = await applyBatesStamp(file.stack.pages[0].sourceDocId, {
+    const data = await applyBatesStamp(file.sourceDocId, {
       ...config,
       startNumber: runningPageNumber,
     });

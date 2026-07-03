@@ -1,7 +1,8 @@
 "use client";
 
 import { useTranslations } from "next-intl";
-import { PageRef, PageStack, formatFileSize } from "@/lib/types";
+import { PageRef, PageStack } from "@/lib/types";
+import { formatSize } from "@/lib/formatSize";
 import { PdfThumbnail } from "./PdfThumbnail";
 
 interface StackDragPreviewProps {
@@ -33,7 +34,7 @@ export function StackDragPreview({ stack, layout }: StackDragPreviewProps) {
           {stack.name}
         </p>
         <p className="text-[10px] text-muted-foreground">
-          {formatFileSize(stack.size)}
+          {formatSize(stack.size)}
         </p>
       </div>
     </div>

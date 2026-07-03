@@ -167,7 +167,7 @@ export function BatesWizard() {
           startNumber: cfg.startNumber + globalOffset + localPageIndex,
         };
         const imageData = await renderBatesPreview(
-          targetFile.stack.pages[0].sourceDocId,
+          targetFile.sourceDocId,
           localPageIndex,
           previewConfig,
           144
@@ -265,10 +265,8 @@ export function BatesWizard() {
             <div className="lg:col-start-1 lg:row-start-2">
               <SortableFileList
                 files={files}
-                dragKey="bates"
                 onRemove={handleRemove}
                 onReorder={handleReorder}
-                onFilesAdded={handleFilesAdded}
                 openFilePicker={openFilePicker}
                 isDragOver={isDragOver}
                 dropZoneHandlers={{

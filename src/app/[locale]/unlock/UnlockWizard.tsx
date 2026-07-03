@@ -95,12 +95,18 @@ export function UnlockWizard() {
     setAuthError(false);
     try {
       const ok = await authenticatePassword(file.sourceDocId, password);
+      // The file can be removed or replaced while a worker call is in flight
+      // (the overlay only blocks input after a delay). Bail out before
+      // touching state — and before getPageCount would re-open a document
+      // whose OPFS bytes were just released.
+      if (fileRef.current?.id !== file.id) return;
       if (!ok) {
         setAuthError(true);
         return;
       }
       // Re-fetch the page count now that the document is readable
       const count = await getPageCount(file.sourceDocId);
+      if (fileRef.current?.id !== file.id) return;
       setFile((prev) =>
         prev
           ? {
@@ -110,6 +116,13 @@ export function UnlockWizard() {
           : prev
       );
       setIsAuthenticated(true);
+    } catch (err) {
+      // Expected when the file was removed mid-call (its worker handle and
+      // OPFS bytes are already gone); only surface errors for the live file.
+      if (fileRef.current?.id === file.id) {
+        console.error("Authentication failed:", err);
+        setAuthError(true);
+      }
     } finally {
       setIsAuthenticating(false);
     }

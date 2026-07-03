@@ -38,20 +38,25 @@ export const DPI_FOR_PRESET: Record<ExportDpiPreset, number> = {
 };
 
 /**
- * Mutate an RGBA pixel buffer in place: brightness * contrast * optional
+ * Mutate an RGB(A) pixel buffer in place: brightness * contrast * optional
  * threshold. Matches the CSS `filter: brightness() contrast()` math so the
  * live preview (CSS-filtered) and the exported pages stay visually aligned.
  *
  * Brightness is a simple multiply on each channel.
  * Contrast follows the SVG/CSS spec: out = (in - 0.5) * amount + 0.5.
  * Threshold binarizes the luminance — every channel becomes 0 or 255.
+ *
+ * `bytesPerPixel` is 4 for canvas ImageData (RGBA) and 3 for the worker's
+ * alpha-free DeviceRGB pixmaps; the first three bytes of each pixel must be
+ * R, G, B. Any alpha byte is left untouched.
  */
-export function applyContrastToImageData(
+export function applyContrastToPixels(
   data: Uint8ClampedArray,
-  config: ContrastConfig
+  config: ContrastConfig,
+  bytesPerPixel: 3 | 4 = 4
 ): void {
   const { contrast, brightness, thresholdEnabled, threshold } = config;
-  for (let i = 0; i < data.length; i += 4) {
+  for (let i = 0; i < data.length; i += bytesPerPixel) {
     let r = data[i];
     let g = data[i + 1];
     let b = data[i + 2];

@@ -181,10 +181,8 @@ export function MergeWizard() {
             <div>
               <SortableFileList
                 files={files}
-                dragKey="merge"
                 onRemove={handleRemove}
                 onReorder={handleReorder}
-                onFilesAdded={handleFilesAdded}
                 openFilePicker={openFilePicker}
                 isDragOver={isDragOver}
                 dropZoneHandlers={{
@@ -230,10 +228,8 @@ export function MergeWizard() {
         ) : (
           <SortableFileList
             files={files}
-            dragKey="merge"
             onRemove={handleRemove}
             onReorder={handleReorder}
-            onFilesAdded={handleFilesAdded}
             openFilePicker={openFilePicker}
             isDragOver={isDragOver}
             dropZoneHandlers={{

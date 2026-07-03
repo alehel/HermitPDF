@@ -1,12 +1,12 @@
-/* eslint-disable no-var */
-declare var $libmupdf_wasm_Module: unknown;
+// Note: the global `$libmupdf_wasm_Module` set in getMupdf() is declared by
+// mupdf's own type definitions (mupdf.d.ts); it configures the Emscripten
+// runtime so the .wasm binary is fetched from /public.
 
 import * as Comlink from "comlink";
 import type { BatesPosition, ExtractedImage, OutlineEntry } from "@/lib/types";
 import {
   formatBatesNumber,
   computeShrinkTransform,
-  computeShrinkMargin,
   computeStampPosition,
   getQuadding,
 } from "@/lib/batesStamp";
@@ -16,6 +16,7 @@ import {
   pageSizeInPoints,
   type ImageProcessConfig,
 } from "@/lib/imageResize";
+import { applyContrastToPixels, type ContrastConfig } from "@/lib/contrast";
 
 type PdfMetadata = {
   title?: string;
@@ -41,17 +42,24 @@ type CompressWorkerConfig = {
   sanitizeStreams: boolean;
 };
 
-// Aliases for MuPDF runtime instance types so signatures stay readable.
-type MupdfDocument = InstanceType<(typeof import("mupdf"))["Document"]>;
-type MupdfPDFDocument = InstanceType<(typeof import("mupdf"))["PDFDocument"]>;
-type MupdfPDFObject = InstanceType<(typeof import("mupdf"))["PDFObject"]>;
+// Aliases for the MuPDF module and its runtime instance types so signatures
+// stay readable.
+type Mupdf = typeof import("mupdf");
+type MupdfDocument = InstanceType<Mupdf["Document"]>;
+type MupdfPDFDocument = InstanceType<Mupdf["PDFDocument"]>;
+type MupdfPDFObject = InstanceType<Mupdf["PDFObject"]>;
+type MupdfPDFPage = InstanceType<Mupdf["PDFPage"]>;
+type MupdfImage = InstanceType<Mupdf["Image"]>;
+type MupdfPixmap = InstanceType<Mupdf["Pixmap"]>;
+type Matrix = [number, number, number, number, number, number];
+type Rect = [number, number, number, number];
 
 // Lazy-load mupdf WASM — initialized on first use, not at module load time.
 // This lets Comlink.expose() run immediately so messages aren't lost.
-let mupdfModule: typeof import("mupdf") | null = null;
-let mupdfLoading: Promise<typeof import("mupdf")> | null = null;
+let mupdfModule: Mupdf | null = null;
+let mupdfLoading: Promise<Mupdf> | null = null;
 
-async function getMupdf(): Promise<typeof import("mupdf")> {
+async function getMupdf(): Promise<Mupdf> {
   if (mupdfModule) return mupdfModule;
   if (!mupdfLoading) {
     globalThis.$libmupdf_wasm_Module = {
@@ -67,7 +75,7 @@ async function getMupdf(): Promise<typeof import("mupdf")> {
 // We store the mupdf module ref alongside each doc so callers don't need
 // to track which mupdf instance opened which document.
 let nextHandle = 1;
-const documents = new Map<number, { doc: InstanceType<(typeof import("mupdf"))["Document"]>; mupdf: typeof import("mupdf") }>();
+const documents = new Map<number, { doc: MupdfDocument; mupdf: Mupdf }>();
 
 function getDoc(handle: number) {
   const entry = documents.get(handle);
@@ -76,72 +84,89 @@ function getDoc(handle: number) {
 }
 
 /**
- * Build the scale + rotation matrix for a page, normalized to a (0,0) origin.
- * Shared by renderToPixmap (which also needs the bbox) and buildRenderMatrix.
+ * Compute the scale + rotation matrix for rendering a page with the given
+ * bounds, normalized so the transformed page starts at a (0,0) origin.
+ */
+function computeRenderGeometry(
+  mupdf: Mupdf,
+  bounds: Rect,
+  dpi: number,
+  rotation: number
+): { matrix: Matrix; normalizedBbox: Rect } {
+  const zoom = dpi / 72;
+  const pageWidth = bounds[2] - bounds[0];
+  const pageHeight = bounds[3] - bounds[1];
+
+  let matrix = mupdf.Matrix.scale(zoom, zoom);
+  if (rotation !== 0) {
+    const cx = (pageWidth * zoom) / 2;
+    const cy = (pageHeight * zoom) / 2;
+    matrix = mupdf.Matrix.concat(matrix, mupdf.Matrix.translate(-cx, -cy));
+    matrix = mupdf.Matrix.concat(matrix, mupdf.Matrix.rotate(rotation));
+    matrix = mupdf.Matrix.concat(matrix, mupdf.Matrix.translate(cx, cy));
+  }
+
+  const bbox = mupdf.Rect.transform(bounds, matrix);
+  const bboxW = bbox[2] - bbox[0];
+  const bboxH = bbox[3] - bbox[1];
+  if (bbox[0] !== 0 || bbox[1] !== 0) {
+    matrix = mupdf.Matrix.concat(
+      matrix,
+      mupdf.Matrix.translate(-bbox[0], -bbox[1])
+    );
+  }
+
+  return { matrix, normalizedBbox: [0, 0, bboxW, bboxH] };
+}
+
+/**
+ * Build the rendering matrix for a page at a given DPI and rotation.
+ * Used by getImagePositions to map image bboxes to canvas coordinates.
  */
 function buildPageMatrix(
-  mupdf: typeof import("mupdf"),
-  doc: InstanceType<typeof mupdf.Document>,
+  mupdf: Mupdf,
+  doc: MupdfDocument,
   pageIndex: number,
   dpi: number,
   rotation: number = 0
-): {
-  matrix: [number, number, number, number, number, number];
-  normalizedBbox: [number, number, number, number];
-} {
-  const zoom = dpi / 72;
+): { matrix: Matrix; normalizedBbox: Rect } {
   const page = doc.loadPage(pageIndex);
   try {
-    const bounds = page.getBounds();
-    const pageWidth = bounds[2] - bounds[0];
-    const pageHeight = bounds[3] - bounds[1];
-
-    let matrix = mupdf.Matrix.scale(zoom, zoom);
-    if (rotation !== 0) {
-      const cx = (pageWidth * zoom) / 2;
-      const cy = (pageHeight * zoom) / 2;
-      matrix = mupdf.Matrix.concat(matrix, mupdf.Matrix.translate(-cx, -cy));
-      matrix = mupdf.Matrix.concat(matrix, mupdf.Matrix.rotate(rotation));
-      matrix = mupdf.Matrix.concat(matrix, mupdf.Matrix.translate(cx, cy));
-    }
-
-    const bbox = mupdf.Rect.transform(bounds, matrix);
-    const bboxW = bbox[2] - bbox[0];
-    const bboxH = bbox[3] - bbox[1];
-    if (bbox[0] !== 0 || bbox[1] !== 0) {
-      matrix = mupdf.Matrix.concat(
-        matrix,
-        mupdf.Matrix.translate(-bbox[0], -bbox[1])
-      );
-    }
-
-    return { matrix, normalizedBbox: [0, 0, bboxW, bboxH] };
+    return computeRenderGeometry(mupdf, page.getBounds(), dpi, rotation);
   } finally {
     page.destroy();
   }
 }
 
 /**
- * Render a page to a white-backgrounded RGBA pixmap using DrawDevice.
+ * Render a page to a white-backgrounded DeviceRGB pixmap using DrawDevice.
  *
  * Supports rotation (0, 90, 180, 270) applied via the transformation matrix.
+ * `alpha` controls whether the pixmap carries an alpha channel — pass false
+ * when the samples will be JPEG-encoded (JPEG can't represent alpha).
  *
  * Each WASM object (page, pixmap, device) must be explicitly destroyed
- * to free native memory — the JS GC won't reclaim it. The nested
- * try/finally blocks ensure cleanup even when rendering throws.
+ * to free native memory promptly — the WASM heap only ever grows, so
+ * waiting for the GC finalizer is not enough. The nested try/finally
+ * blocks ensure cleanup even when rendering throws.
  */
 function renderToPixmap(
-  mupdf: typeof import("mupdf"),
-  doc: InstanceType<typeof mupdf.Document>,
+  mupdf: Mupdf,
+  doc: MupdfDocument,
   pageIndex: number,
   dpi: number,
-  rotation: number = 0
-): InstanceType<typeof mupdf.Pixmap> {
-  const { matrix, normalizedBbox } = buildPageMatrix(mupdf, doc, pageIndex, dpi, rotation);
-
+  rotation: number = 0,
+  alpha: boolean = true
+): MupdfPixmap {
   const page = doc.loadPage(pageIndex);
   try {
-    const pixmap = new mupdf.Pixmap(mupdf.ColorSpace.DeviceRGB, normalizedBbox, true);
+    const { matrix, normalizedBbox } = computeRenderGeometry(
+      mupdf,
+      page.getBounds(),
+      dpi,
+      rotation
+    );
+    const pixmap = new mupdf.Pixmap(mupdf.ColorSpace.DeviceRGB, normalizedBbox, alpha);
     try {
       pixmap.clear(255);
       const device = new mupdf.DrawDevice(matrix, pixmap);
@@ -162,30 +187,64 @@ function renderToPixmap(
 }
 
 /**
- * Build the rendering matrix for a page at a given DPI and rotation.
- * Used by getImagePositions to map image bboxes to canvas coordinates.
+ * Render a page and copy the pixels into an ImageData. getPixels() returns a
+ * view into the WASM heap, so the .slice() copy must happen before the pixmap
+ * is destroyed; the copy's buffer is then safe to transfer to the main thread.
  */
-function buildRenderMatrix(
-  mupdf: typeof import("mupdf"),
-  doc: InstanceType<typeof mupdf.Document>,
+function renderPageToImageData(
+  mupdf: Mupdf,
+  doc: MupdfDocument,
   pageIndex: number,
   dpi: number,
   rotation: number = 0
-): { matrix: [number, number, number, number, number, number] } {
-  return buildPageMatrix(mupdf, doc, pageIndex, dpi, rotation);
+): ImageData {
+  const pixmap = renderToPixmap(mupdf, doc, pageIndex, dpi, rotation);
+  try {
+    return new ImageData(
+      pixmap.getPixels().slice(),
+      pixmap.getWidth(),
+      pixmap.getHeight()
+    );
+  } finally {
+    pixmap.destroy();
+  }
 }
 
 /**
- * Transform a rect through a matrix. MuPDF's Rect.transform works on
- * axis-aligned rects; for image bboxes from the walker we transform
- * the four corners and take the axis-aligned bounding box.
+ * Narrow encoder output for postMessage transfer. Pixmap.asPNG()/asJPEG()
+ * already copy the encoded bytes out of the WASM heap (mupdf's fromBuffer
+ * does HEAPU8.slice), so the backing buffer is a fresh ArrayBuffer that can
+ * be transferred as-is — only the declared type is ArrayBufferLike. Do NOT
+ * .slice() these results: that would copy multi-megabyte buffers a second
+ * time for nothing.
  */
-function transformRect(
-  mupdf: typeof import("mupdf"),
-  rect: [number, number, number, number],
-  matrix: [number, number, number, number, number, number]
-): [number, number, number, number] {
-  return mupdf.Rect.transform(rect, matrix);
+function asTransferableBytes(bytes: Uint8Array): Uint8Array<ArrayBuffer> {
+  return bytes as Uint8Array<ArrayBuffer>;
+}
+
+/**
+ * Save a document and copy the result out of the WASM heap. asUint8Array()
+ * returns a view into WASM memory, so the .slice() copy must happen before
+ * the buffer is destroyed; the copy is then safe to transfer.
+ */
+function saveToTransferableBytes(
+  pdf: MupdfPDFDocument,
+  options: string | Record<string, unknown>
+): Uint8Array<ArrayBuffer> {
+  const buf = pdf.saveToBuffer(options);
+  try {
+    return buf.asUint8Array().slice();
+  } finally {
+    buf.destroy();
+  }
+}
+
+/** Fresh output document stamped with the app's Creator/Producer metadata. */
+function newOutputPdf(mupdf: Mupdf): MupdfPDFDocument {
+  const pdf = new mupdf.PDFDocument();
+  pdf.setMetaData("info:Creator", "hermitpdf.eu");
+  pdf.setMetaData("info:Producer", "hermitpdf.eu");
+  return pdf;
 }
 
 /**
@@ -480,7 +539,7 @@ function extractImageXObject(
   try {
     const pixmap = image.toPixmap();
     try {
-      pushImage(pixmap.asPNG().slice(), "image/png", "png");
+      pushImage(asTransferableBytes(pixmap.asPNG()), "image/png", "png");
     } finally {
       pixmap.destroy();
     }
@@ -570,7 +629,7 @@ function extractImagesViaStextWalker(
 
             const pixmap = image.toPixmap();
             try {
-              const data = pixmap.asPNG().slice();
+              const data = asTransferableBytes(pixmap.asPNG());
 
               const prefix = data.slice(0, 32);
               const key = `${w}x${h}:${Array.from(prefix).map(b => b.toString(16).padStart(2, "0")).join("")}`;
@@ -615,7 +674,7 @@ function extractImagesViaStextWalker(
  * to the same object, just with new contents.
  */
 function recompressImageXObject(
-  mupdf: typeof import("mupdf"),
+  mupdf: Mupdf,
   pdf: MupdfPDFDocument,
   xobj: MupdfPDFObject,
   seen: Set<number>,
@@ -651,7 +710,7 @@ function recompressImageXObject(
   if (!xobj.get("SMask").isNull()) return;
   if (!xobj.get("Mask").isNull()) return;
 
-  let image: InstanceType<typeof mupdf.Image> | null = null;
+  let image: MupdfImage | null = null;
   try {
     image = pdf.loadImage(xobj);
   } catch {
@@ -662,7 +721,7 @@ function recompressImageXObject(
     const pixmap = image.toPixmap();
     let pixmapForJpeg = pixmap;
     let createdRgbCopy = false;
-    let resizedPixmap: InstanceType<typeof mupdf.Pixmap> | null = null;
+    let resizedPixmap: MupdfPixmap | null = null;
     try {
       // JPEG can't carry an alpha channel, and CMYK JPEGs need a separate
       // path with invert_cmyk. Convert anything that isn't 1- or 3-component
@@ -695,7 +754,8 @@ function recompressImageXObject(
       const finalComponents = pixmapForJpeg.getNumberOfComponents();
       const outputColorSpace = finalComponents === 1 ? "DeviceGray" : "DeviceRGB";
 
-      const jpegBytes = pixmapForJpeg.asJPEG(quality).slice();
+      // asJPEG already copies out of the WASM heap; the bytes stay worker-side.
+      const jpegBytes = pixmapForJpeg.asJPEG(quality);
 
       // Replace the dict entries that describe the encoding so they match the
       // new JPEG bytes. Drop entries that would conflict with DCTDecode.
@@ -730,7 +790,7 @@ function recompressImageXObject(
  * once even when it appears on multiple pages.
  */
 function walkResourcesForRecompression(
-  mupdf: typeof import("mupdf"),
+  mupdf: Mupdf,
   pdf: MupdfPDFDocument,
   resources: MupdfPDFObject,
   seen: Set<number>,
@@ -761,7 +821,7 @@ function walkResourcesForRecompression(
  * setting is applied to whatever images do get re-encoded.
  */
 function recompressAllImages(
-  mupdf: typeof import("mupdf"),
+  mupdf: Mupdf,
   pdf: MupdfPDFDocument,
   config: ImageProcessConfig
 ): void {
@@ -785,31 +845,54 @@ function buildCompressSaveOptions(config: CompressWorkerConfig): Record<string, 
   };
 }
 
-function imageToPdf(
-  mupdf: typeof import("mupdf"),
-  data: ArrayBuffer
-): MupdfPDFDocument {
-  const img = new mupdf.Image(data);
-  const xRes = img.getXResolution() || 72;
-  const yRes = img.getYResolution() || 72;
-  const w = (img.getWidth() / xRes) * 72;
-  const h = (img.getHeight() / yRes) * 72;
-
-  const pdf = new mupdf.PDFDocument();
-  const imgRef = pdf.addImage(img);
-  img.destroy();
-
-  const resources = pdf.addObject(
-    pdf.newDictionary()
-  );
+/**
+ * Append a page to `pdf` that draws a single image XObject named "Img".
+ * `drawW/drawH` give the image's on-page size in points, offset `drawX/drawY`
+ * from the bottom-left of a `pageW × pageH` page; they default to full-bleed.
+ */
+function addImagePage(
+  pdf: MupdfPDFDocument,
+  image: MupdfImage,
+  pageW: number,
+  pageH: number,
+  drawW: number = pageW,
+  drawH: number = pageH,
+  drawX: number = 0,
+  drawY: number = 0
+): void {
+  const imgRef = pdf.addImage(image);
+  const resources = pdf.addObject(pdf.newDictionary());
   const xobjects = pdf.newDictionary();
   xobjects.put("Img", imgRef);
   resources.put("XObject", xobjects);
 
-  const contents = `q ${w} 0 0 ${h} 0 0 cm /Img Do Q`;
-  const pageObj = pdf.addPage([0, 0, w, h], 0, resources, contents);
+  const contents = `q ${drawW} 0 0 ${drawH} ${drawX} ${drawY} cm /Img Do Q`;
+  const pageObj = pdf.addPage([0, 0, pageW, pageH], 0, resources, contents);
   pdf.insertPage(-1, pageObj);
+}
 
+/** Physical size of an image in points, using its embedded resolution. */
+function imageSizeInPoints(image: MupdfImage): { w: number; h: number } {
+  const xRes = image.getXResolution() || 72;
+  const yRes = image.getYResolution() || 72;
+  return {
+    w: (image.getWidth() / xRes) * 72,
+    h: (image.getHeight() / yRes) * 72,
+  };
+}
+
+function imageToPdf(
+  mupdf: Mupdf,
+  data: ArrayBuffer
+): MupdfPDFDocument {
+  const pdf = new mupdf.PDFDocument();
+  const img = new mupdf.Image(data);
+  try {
+    const { w, h } = imageSizeInPoints(img);
+    addImagePage(pdf, img, w, h);
+  } finally {
+    img.destroy();
+  }
   return pdf;
 }
 
@@ -824,7 +907,7 @@ function imageToPdf(
  * scaled to fit within the page bounds preserving aspect ratio.
  */
 function appendProcessedImagePage(
-  mupdf: typeof import("mupdf"),
+  mupdf: Mupdf,
   outputPdf: MupdfPDFDocument,
   sourcePdf: MupdfPDFDocument,
   config: ImageProcessConfig
@@ -836,7 +919,7 @@ function appendProcessedImagePage(
   const imgObj = xobjs.get("Img");
   const sourceImage = sourcePdf.loadImage(imgObj);
 
-  let processedImage: InstanceType<typeof mupdf.Image> = sourceImage;
+  let processedImage: MupdfImage = sourceImage;
   let imageOwnedHere = false; // Whether we created the image ourselves and must destroy it
 
   try {
@@ -851,7 +934,7 @@ function appendProcessedImagePage(
       const pixmap = sourceImage.toPixmap();
       try {
         let pixmapToEncode = pixmap;
-        let resized: InstanceType<typeof mupdf.Pixmap> | null = null;
+        let resized: MupdfPixmap | null = null;
         try {
           if (target.scaled) {
             const corners: [number, number][] = [
@@ -863,7 +946,8 @@ function appendProcessedImagePage(
             resized = pixmap.warp(corners, target.width, target.height);
             pixmapToEncode = resized;
           }
-          const jpegBytes = pixmapToEncode.asJPEG(config.quality).slice();
+          // asJPEG already copies out of the WASM heap; bytes stay worker-side.
+          const jpegBytes = pixmapToEncode.asJPEG(config.quality);
           processedImage = new mupdf.Image(jpegBytes);
           imageOwnedHere = true;
         } finally {
@@ -886,10 +970,7 @@ function appendProcessedImagePage(
       pageW = imgLandscape ? longPt : shortPt;
       pageH = imgLandscape ? shortPt : longPt;
     } else {
-      const xRes = processedImage.getXResolution() || 72;
-      const yRes = processedImage.getYResolution() || 72;
-      pageW = (processedImage.getWidth() / xRes) * 72;
-      pageH = (processedImage.getHeight() / yRes) * 72;
+      ({ w: pageW, h: pageH } = imageSizeInPoints(processedImage));
     }
 
     // Fit image into page bounds preserving aspect ratio, then centre.
@@ -907,19 +988,151 @@ function appendProcessedImagePage(
     const drawX = (pageW - drawW) / 2;
     const drawY = (pageH - drawH) / 2;
 
-    const imgRef = outputPdf.addImage(processedImage);
-    const newResources = outputPdf.addObject(outputPdf.newDictionary());
-    const newXObjs = outputPdf.newDictionary();
-    newXObjs.put("Img", imgRef);
-    newResources.put("XObject", newXObjs);
-
-    const contents = `q ${drawW} 0 0 ${drawH} ${drawX} ${drawY} cm /Img Do Q`;
-    const pageObj = outputPdf.addPage([0, 0, pageW, pageH], 0, newResources, contents);
-    outputPdf.insertPage(-1, pageObj);
+    addImagePage(outputPdf, processedImage, pageW, pageH, drawW, drawH, drawX, drawY);
   } finally {
     if (imageOwnedHere) processedImage.destroy();
     sourceImage.destroy();
   }
+}
+
+/**
+ * Read a page's /Contents stream(s) as text. Content may be a single stream
+ * or an array of streams (both allowed by the PDF spec); array parts are
+ * joined with newlines. Returns "" when the stream data can't be read (seen
+ * on some grafted pages) — callers treat that as "skip".
+ *
+ * readStream() returns a Buffer wrapping native memory; destroy it promptly
+ * instead of leaving it to the GC finalizer, since the WASM heap never shrinks.
+ */
+function readPageContentText(contentsObj: MupdfPDFObject): string {
+  const readOne = (obj: MupdfPDFObject): string => {
+    const buf = obj.readStream();
+    try {
+      return buf.asString();
+    } finally {
+      buf.destroy();
+    }
+  };
+  try {
+    if (contentsObj.isArray()) {
+      const parts: string[] = [];
+      for (let s = 0; s < contentsObj.length; s++) {
+        parts.push(readOne(contentsObj.get(s)));
+      }
+      return parts.join("\n");
+    }
+    return readOne(contentsObj);
+  } catch {
+    return "";
+  }
+}
+
+/**
+ * Shrink a page's content by wrapping its stream in a q/Q + cm transform,
+ * clearing room for the Bates stamp. No-op when the content stream can't be
+ * read — the stamp then overlays the unshrunk content.
+ */
+function shrinkPageContent(
+  output: MupdfPDFDocument,
+  pageObj: MupdfPDFObject,
+  pageWidth: number,
+  pageHeight: number,
+  config: BatesStampWorkerConfig
+): void {
+  const contentsObj = pageObj.get("Contents");
+  if (contentsObj.isNull()) return;
+
+  const originalStream = readPageContentText(contentsObj);
+  if (!originalStream) return;
+
+  const t = computeShrinkTransform(
+    pageWidth,
+    pageHeight,
+    config.position,
+    config.fontSize,
+    config.padding
+  );
+  const wrappedStream =
+    `q ${t.a} ${t.b} ${t.c} ${t.d} ${t.e} ${t.f} cm\n` +
+    originalStream +
+    "\nQ\n";
+
+  pageObj.put("Contents", output.addStream(wrappedStream, {}));
+}
+
+/**
+ * Stamp one page of `output` with a Bates number: optionally shrink the
+ * existing content to clear a margin, then add the stamp as a FreeText
+ * annotation. The annotation still needs a later bake() to become permanent
+ * page content — the caller bakes once after stamping all pages.
+ */
+function stampBatesOnPage(
+  output: MupdfPDFDocument,
+  pageIndex: number,
+  batesText: string,
+  config: BatesStampWorkerConfig
+): void {
+  const pageObj = output.findPage(pageIndex);
+  const mediaBox = pageObj.get("MediaBox");
+  const pageWidth = mediaBox.get(2).asNumber() - mediaBox.get(0).asNumber();
+  const pageHeight = mediaBox.get(3).asNumber() - mediaBox.get(1).asNumber();
+
+  if (config.shrink) {
+    shrinkPageContent(output, pageObj, pageWidth, pageHeight, config);
+  }
+
+  const page = output.loadPage(pageIndex) as MupdfPDFPage;
+  try {
+    const annot = page.createAnnotation("FreeText");
+    const pos = computeStampPosition(
+      pageWidth,
+      pageHeight,
+      config.position,
+      config.fontSize,
+      config.padding
+    );
+    const quadding = getQuadding(config.position);
+
+    // Annotation rect spans from the stamp position to the far page edge so
+    // the quadding (text alignment) lands the text where expected.
+    const rectHeight = config.fontSize + config.padding;
+    let rectX0: number, rectX1: number;
+    if (quadding === 0) {
+      // Left-aligned
+      rectX0 = pos.x;
+      rectX1 = pageWidth - config.padding;
+    } else if (quadding === 2) {
+      // Right-aligned
+      rectX0 = config.padding;
+      rectX1 = pos.x;
+    } else {
+      // Center
+      rectX0 = config.padding;
+      rectX1 = pageWidth - config.padding;
+    }
+
+    annot.setRect([rectX0, pos.y, rectX1, pos.y + rectHeight]);
+    annot.setDefaultAppearance("Helv", config.fontSize, [0, 0, 0]);
+    annot.setContents(batesText);
+    annot.setQuadding(quadding);
+    annot.setBorderWidth(0);
+    annot.setColor([]);
+    annot.update();
+  } finally {
+    page.destroy();
+  }
+}
+
+// In-progress image-page PDF builds for the incremental export API, keyed by
+// build handle. Each document is owned by its build and destroyed on
+// finish/abort.
+const imagePdfBuilds = new Map<number, MupdfPDFDocument>();
+let nextBuildId = 1;
+
+function getBuild(buildId: number): MupdfPDFDocument {
+  const pdf = imagePdfBuilds.get(buildId);
+  if (!pdf) throw new Error(`No image PDF build for id ${buildId}`);
+  return pdf;
 }
 
 const api = {
@@ -953,13 +1166,7 @@ const api = {
     rotation: number = 0
   ): ImageData {
     const { doc, mupdf } = getDoc(handle);
-    const pixmap = renderToPixmap(mupdf, doc, pageIndex, dpi, rotation);
-    const imageData = new ImageData(
-      pixmap.getPixels().slice(),
-      pixmap.getWidth(),
-      pixmap.getHeight()
-    );
-    pixmap.destroy();
+    const imageData = renderPageToImageData(mupdf, doc, pageIndex, dpi, rotation);
     return Comlink.transfer(imageData, [imageData.data.buffer]);
   },
 
@@ -986,33 +1193,13 @@ const api = {
     const dpi = ((targetWidth * dpr) / displayWidth) * 72;
 
     const pixmap = renderToPixmap(mupdf, doc, pageIndex, dpi, rotation);
-    const pngBytes = pixmap.asPNG();
-    pixmap.destroy();
-
-    const data = pngBytes.slice();
-    return Comlink.transfer({ pngData: data, aspectRatio }, [data.buffer]);
-  },
-
-  /**
-   * Return each page's bounding box in PDF user units (points). Used when an
-   * export pipeline needs to know the natural page size up front — e.g. the
-   * contrast wizard, which rasterizes every page at a target DPI and then
-   * lays the images out at their original point size.
-   */
-  getAllPageBounds(handle: number): { widthPt: number; heightPt: number }[] {
-    const { doc } = getDoc(handle);
-    const count = doc.countPages();
-    const out: { widthPt: number; heightPt: number }[] = [];
-    for (let i = 0; i < count; i++) {
-      const page = doc.loadPage(i);
-      try {
-        const b = page.getBounds();
-        out.push({ widthPt: b[2] - b[0], heightPt: b[3] - b[1] });
-      } finally {
-        page.destroy();
-      }
+    let pngData: Uint8Array<ArrayBuffer>;
+    try {
+      pngData = asTransferableBytes(pixmap.asPNG());
+    } finally {
+      pixmap.destroy();
     }
-    return out;
+    return Comlink.transfer({ pngData, aspectRatio }, [pngData.buffer]);
   },
 
   releaseDocument(handle: number): void {
@@ -1059,22 +1246,22 @@ const api = {
     pageIndex: number,
     dpi: number,
     rotation: number = 0
-  ): { imageIndex: number; bbox: [number, number, number, number]; width: number; height: number }[] {
+  ): { imageIndex: number; bbox: Rect; width: number; height: number }[] {
     const { doc, mupdf } = getDoc(handle);
-    const { matrix } = buildRenderMatrix(mupdf, doc, pageIndex, dpi, rotation);
+    const { matrix } = buildPageMatrix(mupdf, doc, pageIndex, dpi, rotation);
 
     const page = doc.loadPage(pageIndex);
     try {
       const stext = page.toStructuredText("preserve-images");
       try {
-        const positions: { imageIndex: number; bbox: [number, number, number, number]; width: number; height: number }[] = [];
+        const positions: { imageIndex: number; bbox: Rect; width: number; height: number }[] = [];
         let imgIdx = 0;
         stext.walk({
           onImageBlock(bbox, _transform, image) {
             const w = image.getWidth();
             const h = image.getHeight();
             if (w < 10 || h < 10) return;
-            const transformed = transformRect(mupdf, bbox, matrix);
+            const transformed = mupdf.Rect.transform(bbox, matrix);
             positions.push({ imageIndex: imgIdx++, bbox: transformed, width: w, height: h });
           },
         });
@@ -1097,16 +1284,23 @@ const api = {
     pageIndex: number,
     imageIndex: number
   ): { width: number; height: number; data: Uint8Array; mimeType: string; extension: string } | null {
+    type SingleImage = {
+      width: number;
+      height: number;
+      data: Uint8Array<ArrayBuffer>;
+      mimeType: string;
+      extension: string;
+    };
     const { doc } = getDoc(handle);
     const page = doc.loadPage(pageIndex);
     try {
       const stext = page.toStructuredText("preserve-images");
       try {
         let imgIdx = 0;
-        let result: { width: number; height: number; data: Uint8Array; mimeType: string; extension: string } | null = null;
+        let found: SingleImage | null = null;
         stext.walk({
           onImageBlock(_bbox, _transform, image) {
-            if (result) return; // already found
+            if (found) return; // already found
             const w = image.getWidth();
             const h = image.getHeight();
             if (w < 10 || h < 10) return;
@@ -1114,18 +1308,18 @@ const api = {
 
             const pixmap = image.toPixmap();
             try {
-              const pngBytes = pixmap.asPNG();
-              const data = pngBytes.slice();
-              result = { width: w, height: h, data, mimeType: "image/png", extension: "png" };
+              const data = asTransferableBytes(pixmap.asPNG());
+              found = { width: w, height: h, data, mimeType: "image/png", extension: "png" };
             } finally {
               pixmap.destroy();
             }
           },
         });
-        if (result) {
-          return Comlink.transfer(result, [(result as { data: Uint8Array }).data.buffer]);
-        }
-        return null;
+        // TS narrows `found` to null here (it can't see the closure write),
+        // so widen it back explicitly.
+        const result = found as SingleImage | null;
+        if (!result) return null;
+        return Comlink.transfer(result, [result.data.buffer]);
       } finally {
         stext.destroy();
       }
@@ -1147,106 +1341,22 @@ const api = {
     config: BatesStampWorkerConfig
   ): Promise<Uint8Array> {
     const { doc: sourceDoc, mupdf } = getDoc(handle);
-    const output = new mupdf.PDFDocument();
+    const output = newOutputPdf(mupdf);
     try {
-      output.setMetaData("info:Creator", "hermitpdf.eu");
-      output.setMetaData("info:Producer", "hermitpdf.eu");
-
       const pageCount = sourceDoc.countPages();
       for (let i = 0; i < pageCount; i++) {
-        output.graftPage(i, sourceDoc as InstanceType<typeof mupdf.PDFDocument>, i);
+        output.graftPage(i, sourceDoc as MupdfPDFDocument, i);
       }
-
-      // Add a Helvetica font for the stamp
-      const font = new mupdf.Font("Helvetica");
 
       for (let i = 0; i < pageCount; i++) {
         const batesText = formatBatesNumber(config.prefix, config.startNumber + i, config.digits);
-
-        // Get page dimensions from the page object
-        const pageObj = output.findPage(i);
-        const mediaBox = pageObj.get("MediaBox");
-        const pageWidth = mediaBox.get(2).asNumber() - mediaBox.get(0).asNumber();
-        const pageHeight = mediaBox.get(3).asNumber() - mediaBox.get(1).asNumber();
-
-        // Handle shrink mode: wrap existing content stream with scale matrix
-        if (config.shrink) {
-          const transform = computeShrinkTransform(pageWidth, pageHeight, config.position, config.fontSize, config.padding);
-          const contentsObj = pageObj.get("Contents");
-
-          if (!contentsObj.isNull()) {
-            let originalStream = "";
-            try {
-              if (contentsObj.isArray()) {
-                const parts: string[] = [];
-                for (let s = 0; s < contentsObj.length; s++) {
-                  parts.push(contentsObj.get(s).readStream().asString());
-                }
-                originalStream = parts.join("\n");
-              } else {
-                originalStream = contentsObj.readStream().asString();
-              }
-            } catch {
-              // Stream data may not be directly readable on grafted pages;
-              // fall through and skip shrink for this page.
-            }
-
-            if (originalStream) {
-              const wrappedStream =
-                `q ${transform.a} ${transform.b} ${transform.c} ${transform.d} ${transform.e} ${transform.f} cm\n` +
-                originalStream +
-                "\nQ\n";
-
-              // Create a new stream object for the wrapped content
-              const newStreamObj = output.addStream(wrappedStream, {});
-              pageObj.put("Contents", newStreamObj);
-            }
-          }
-        }
-
-        // Add FreeText annotation for the Bates stamp
-        const page = output.loadPage(i) as InstanceType<typeof mupdf.PDFPage>;
-        try {
-          const annot = page.createAnnotation("FreeText");
-          const pos = computeStampPosition(pageWidth, pageHeight, config.position, config.fontSize, config.padding);
-          const quadding = getQuadding(config.position);
-
-          // Set annotation rect — width covers most of the page for alignment to work
-          const rectHeight = config.fontSize + config.padding;
-          let rectX0: number, rectX1: number;
-          if (quadding === 0) {
-            // Left-aligned
-            rectX0 = pos.x;
-            rectX1 = pageWidth - config.padding;
-          } else if (quadding === 2) {
-            // Right-aligned
-            rectX0 = config.padding;
-            rectX1 = pos.x;
-          } else {
-            // Center
-            rectX0 = config.padding;
-            rectX1 = pageWidth - config.padding;
-          }
-
-          annot.setRect([rectX0, pos.y, rectX1, pos.y + rectHeight]);
-          annot.setDefaultAppearance("Helv", config.fontSize, [0, 0, 0]);
-          annot.setContents(batesText);
-          annot.setQuadding(quadding);
-          annot.setBorderWidth(0);
-          annot.setColor([]);
-          annot.update();
-        } finally {
-          page.destroy();
-        }
+        stampBatesOnPage(output, i, batesText, config);
       }
 
       // Bake annotations into page content so stamps are permanent
       output.bake(true, false);
-      font.destroy();
 
-      const buf = output.saveToBuffer("compress");
-      const bytes = buf.asUint8Array().slice();
-      buf.destroy();
+      const bytes = saveToTransferableBytes(output, "compress");
       return Comlink.transfer(bytes, [bytes.buffer]);
     } finally {
       output.destroy();
@@ -1267,109 +1377,14 @@ const api = {
     const { doc: sourceDoc, mupdf } = getDoc(handle);
     const output = new mupdf.PDFDocument();
     try {
-      // Graft just the one page
-      output.graftPage(0, sourceDoc as InstanceType<typeof mupdf.PDFDocument>, pageIndex);
-
-      const font = new mupdf.Font("Helvetica");
+      // Graft just the one page, stamp it, and render it.
+      output.graftPage(0, sourceDoc as MupdfPDFDocument, pageIndex);
       const batesText = formatBatesNumber(config.prefix, config.startNumber, config.digits);
-
-      const pageObj = output.findPage(0);
-      const mediaBox = pageObj.get("MediaBox");
-      const pageWidth = mediaBox.get(2).asNumber() - mediaBox.get(0).asNumber();
-      const pageHeight = mediaBox.get(3).asNumber() - mediaBox.get(1).asNumber();
-
-      if (config.shrink) {
-        const transform = computeShrinkTransform(pageWidth, pageHeight, config.position, config.fontSize, config.padding);
-        const contentsObj = pageObj.get("Contents");
-
-        if (!contentsObj.isNull()) {
-          let originalStream = "";
-          try {
-            if (contentsObj.isArray()) {
-              const parts: string[] = [];
-              for (let s = 0; s < contentsObj.length; s++) {
-                parts.push(contentsObj.get(s).readStream().asString());
-              }
-              originalStream = parts.join("\n");
-            } else {
-              originalStream = contentsObj.readStream().asString();
-            }
-          } catch {
-            // Stream data may not be directly readable on grafted pages;
-            // fall through and skip shrink for this page.
-          }
-
-          if (originalStream) {
-            const wrappedStream =
-              `q ${transform.a} ${transform.b} ${transform.c} ${transform.d} ${transform.e} ${transform.f} cm\n` +
-              originalStream +
-              "\nQ\n";
-
-            const newStreamObj = output.addStream(wrappedStream, {});
-            pageObj.put("Contents", newStreamObj);
-          }
-        }
-      }
-
-      const page = output.loadPage(0) as InstanceType<typeof mupdf.PDFPage>;
-      try {
-        const annot = page.createAnnotation("FreeText");
-        const pos = computeStampPosition(pageWidth, pageHeight, config.position, config.fontSize, config.padding);
-        const quadding = getQuadding(config.position);
-
-        const rectHeight = config.fontSize + config.padding;
-        let rectX0: number, rectX1: number;
-        if (quadding === 0) {
-          rectX0 = pos.x;
-          rectX1 = pageWidth - config.padding;
-        } else if (quadding === 2) {
-          rectX0 = config.padding;
-          rectX1 = pos.x;
-        } else {
-          rectX0 = config.padding;
-          rectX1 = pageWidth - config.padding;
-        }
-
-        annot.setRect([rectX0, pos.y, rectX1, pos.y + rectHeight]);
-        annot.setDefaultAppearance("Helv", config.fontSize, [0, 0, 0]);
-        annot.setContents(batesText);
-        annot.setQuadding(quadding);
-        annot.setBorderWidth(0);
-        annot.setColor([]);
-        annot.update();
-      } finally {
-        page.destroy();
-      }
-
+      stampBatesOnPage(output, 0, batesText, config);
       output.bake(true, false);
 
-      // Render the stamped page
-      const { matrix, normalizedBbox } = buildPageMatrix(mupdf, output, 0, dpi, 0);
-      const renderPage = output.loadPage(0);
-      try {
-        const pixmap = new mupdf.Pixmap(mupdf.ColorSpace.DeviceRGB, normalizedBbox, true);
-        try {
-          pixmap.clear(255);
-          const device = new mupdf.DrawDevice(matrix, pixmap);
-          try {
-            renderPage.run(device, mupdf.Matrix.identity);
-            device.close();
-          } finally {
-            device.destroy();
-          }
-          const imageData = new ImageData(
-            pixmap.getPixels().slice(),
-            pixmap.getWidth(),
-            pixmap.getHeight()
-          );
-          return Comlink.transfer(imageData, [imageData.data.buffer]);
-        } finally {
-          pixmap.destroy();
-        }
-      } finally {
-        renderPage.destroy();
-        font.destroy();
-      }
+      const imageData = renderPageToImageData(mupdf, output, 0, dpi);
+      return Comlink.transfer(imageData, [imageData.data.buffer]);
     } finally {
       output.destroy();
     }
@@ -1462,13 +1477,11 @@ const api = {
     const { doc } = getDoc(handle);
     const pdf = doc.asPDF();
     if (!pdf) throw new Error("Document is not a PDF");
-    const buf = pdf.saveToBuffer({
+    const bytes = saveToTransferableBytes(pdf, {
       encrypt: "none",
       compress: true,
       garbage: true,
     });
-    const bytes = buf.asUint8Array().slice();
-    buf.destroy();
     return Comlink.transfer(bytes, [bytes.buffer]);
   },
 
@@ -1484,14 +1497,12 @@ const api = {
     const { doc } = getDoc(handle);
     const pdf = doc.asPDF();
     if (!pdf) throw new Error("Document is not a PDF");
-    const buf = pdf.saveToBuffer({
+    const bytes = saveToTransferableBytes(pdf, {
       encrypt: "aes-256",
       "user-password": password,
       "owner-password": password,
       compress: true,
     });
-    const bytes = buf.asUint8Array().slice();
-    buf.destroy();
     return Comlink.transfer(bytes, [bytes.buffer]);
   },
 
@@ -1510,11 +1521,8 @@ const api = {
     metadata?: PdfMetadata
   ): Promise<Uint8Array> {
     const mupdf = await getMupdf();
-    const output = new mupdf.PDFDocument();
+    const output = newOutputPdf(mupdf);
     try {
-      output.setMetaData("info:Creator", "hermitpdf.eu");
-      output.setMetaData("info:Producer", "hermitpdf.eu");
-
       if (metadata) {
         if (metadata.title) output.setMetaData("info:Title", metadata.title);
         if (metadata.author)
@@ -1537,7 +1545,7 @@ const api = {
           if (!sourcePdf) throw new Error("Image-process spec requires a PDF source");
           appendProcessedImagePage(mupdf, output, sourcePdf, spec.imageProcess);
         } else {
-          output.graftPage(destIndex, sourceDoc as InstanceType<typeof mupdf.PDFDocument>, spec.pageIndex);
+          output.graftPage(destIndex, sourceDoc as MupdfPDFDocument, spec.pageIndex);
         }
 
         // Apply rotation to the page if needed
@@ -1549,9 +1557,7 @@ const api = {
         }
       }
 
-      const buf = output.saveToBuffer("compress");
-      const bytes = buf.asUint8Array().slice();
-      buf.destroy();
+      const bytes = saveToTransferableBytes(output, "compress");
       return Comlink.transfer(bytes, [bytes.buffer]);
     } finally {
       output.destroy();
@@ -1575,11 +1581,8 @@ const api = {
     const sourcePdf = sourceDoc.asPDF();
     if (!sourcePdf) throw new Error("Document is not a PDF");
 
-    const output = new mupdf.PDFDocument();
+    const output = newOutputPdf(mupdf);
     try {
-      output.setMetaData("info:Creator", "hermitpdf.eu");
-      output.setMetaData("info:Producer", "hermitpdf.eu");
-
       const pageCount = sourceDoc.countPages();
       for (let i = 0; i < pageCount; i++) {
         output.graftPage(i, sourcePdf, i);
@@ -1598,9 +1601,7 @@ const api = {
         }
       }
 
-      const buf = output.saveToBuffer(buildCompressSaveOptions(config));
-      const bytes = buf.asUint8Array().slice();
-      buf.destroy();
+      const bytes = saveToTransferableBytes(output, buildCompressSaveOptions(config));
       return Comlink.transfer(bytes, [bytes.buffer]);
     } finally {
       output.destroy();
@@ -1631,86 +1632,113 @@ const api = {
         recompressAllImages(mupdf, output, config.imageProcess);
       }
 
-      const { matrix, normalizedBbox } = buildPageMatrix(mupdf, output, 0, dpi, 0);
-      const page = output.loadPage(0);
-      try {
-        const pixmap = new mupdf.Pixmap(mupdf.ColorSpace.DeviceRGB, normalizedBbox, true);
-        try {
-          pixmap.clear(255);
-          const device = new mupdf.DrawDevice(matrix, pixmap);
-          try {
-            page.run(device, mupdf.Matrix.identity);
-            device.close();
-          } finally {
-            device.destroy();
-          }
-          const imageData = new ImageData(
-            pixmap.getPixels().slice(),
-            pixmap.getWidth(),
-            pixmap.getHeight()
-          );
-          return Comlink.transfer(imageData, [imageData.data.buffer]);
-        } finally {
-          pixmap.destroy();
-        }
-      } finally {
-        page.destroy();
-      }
+      const imageData = renderPageToImageData(mupdf, output, 0, dpi);
+      return Comlink.transfer(imageData, [imageData.data.buffer]);
     } finally {
       output.destroy();
     }
   },
 
   /**
-   * Build a PDF where each page is a single embedded image at the given point
-   * size. Accepts whatever encoded image bytes MuPDF can read (typically JPEG
-   * or PNG); the wizard picks the right codec per page (JPEG for tone work,
-   * PNG when thresholding to keep B/W edges crisp).
+   * Start an incremental image-page PDF build (see imagePdfAddContrastPage).
    *
-   * Point size is the on-page size in PDF user units; the image's pixel size
-   * is whatever the encoded bytes carry. MuPDF re-emits each image into its
-   * native PDF filter (DCTDecode for JPEG, FlateDecode for PNG).
+   * The incremental API exists for memory reasons: exporting a rasterized
+   * document used to accumulate every encoded page on the main thread before
+   * a single build call. With this API only the worker-side output document
+   * grows; each page's transient buffers are freed before the next call, so
+   * peak main-thread memory stays flat regardless of document length.
    */
-  async buildPdfFromImagePages(
-    pages: { data: ArrayBuffer; widthPt: number; heightPt: number }[]
-  ): Promise<Uint8Array> {
+  async imagePdfBegin(): Promise<number> {
     const mupdf = await getMupdf();
-    const output = new mupdf.PDFDocument();
+    const buildId = nextBuildId++;
+    imagePdfBuilds.set(buildId, newOutputPdf(mupdf));
+    return buildId;
+  },
+
+  /**
+   * Render one page of an open document, apply the contrast/brightness/
+   * threshold filter, encode it, and append it to the build as a page at the
+   * source page's natural point size.
+   *
+   * Everything happens inside the worker: the pixmap is rendered without an
+   * alpha channel so it can be JPEG-encoded directly, and the filter mutates
+   * the pixmap's sample view in place — no pixel data ever crosses the worker
+   * boundary. The wizard picks the codec: JPEG for tone work, PNG when
+   * thresholding (JPEG would ring around the hard black/white edges). MuPDF
+   * re-emits each image into its native PDF filter (DCTDecode for JPEG,
+   * FlateDecode for PNG).
+   */
+  imagePdfAddContrastPage(
+    buildId: number,
+    handle: number,
+    pageIndex: number,
+    dpi: number,
+    config: ContrastConfig,
+    encoding: { format: "png" } | { format: "jpeg"; quality: number }
+  ): void {
+    const output = getBuild(buildId);
+    const { doc, mupdf } = getDoc(handle);
+
+    // The page is laid out at its natural size in points.
+    const page = doc.loadPage(pageIndex);
+    let widthPt: number;
+    let heightPt: number;
     try {
-      output.setMetaData("info:Creator", "hermitpdf.eu");
-      output.setMetaData("info:Producer", "hermitpdf.eu");
+      const b = page.getBounds();
+      widthPt = b[2] - b[0];
+      heightPt = b[3] - b[1];
+    } finally {
+      page.destroy();
+    }
 
-      for (const p of pages) {
-        const img = new mupdf.Image(p.data);
-        const imgRef = output.addImage(img);
-        img.destroy();
+    const pixmap = renderToPixmap(mupdf, doc, pageIndex, dpi, 0, /* alpha */ false);
+    let encoded: Uint8Array;
+    try {
+      // getPixels() is a live view into the WASM heap; mutating it filters
+      // the pixmap in place without copying the samples. The pixmap is
+      // DeviceRGB without alpha, so samples are packed 3 bytes per pixel.
+      applyContrastToPixels(pixmap.getPixels(), config, 3);
+      encoded =
+        encoding.format === "png" ? pixmap.asPNG() : pixmap.asJPEG(encoding.quality);
+    } finally {
+      pixmap.destroy();
+    }
 
-        const resources = output.addObject(output.newDictionary());
-        const xobjects = output.newDictionary();
-        xobjects.put("Img", imgRef);
-        resources.put("XObject", xobjects);
+    const img = new mupdf.Image(encoded);
+    try {
+      addImagePage(output, img, widthPt, heightPt);
+    } finally {
+      img.destroy();
+    }
+  },
 
-        const contents = `q ${p.widthPt} 0 0 ${p.heightPt} 0 0 cm /Img Do Q`;
-        const pageObj = output.addPage(
-          [0, 0, p.widthPt, p.heightPt],
-          0,
-          resources,
-          contents
-        );
-        output.insertPage(-1, pageObj);
-      }
-
-      const buf = output.saveToBuffer({
+  /** Save the finished build and discard it. */
+  imagePdfFinish(buildId: number): Uint8Array {
+    const output = getBuild(buildId);
+    try {
+      const bytes = saveToTransferableBytes(output, {
         compress: true,
-        "compress-images": false,
+        "compress-images": false, // pages carry their own JPEG/PNG encoding
         garbage: "deduplicate",
         sanitize: true,
       });
-      const bytes = buf.asUint8Array().slice();
-      buf.destroy();
       return Comlink.transfer(bytes, [bytes.buffer]);
     } finally {
       output.destroy();
+      imagePdfBuilds.delete(buildId);
+    }
+  },
+
+  /**
+   * Discard an in-progress build. Safe to call after imagePdfFinish (or with
+   * an unknown id) — it only destroys builds that are still registered, so
+   * callers can put it in a finally block unconditionally.
+   */
+  imagePdfAbort(buildId: number): void {
+    const output = imagePdfBuilds.get(buildId);
+    if (output) {
+      output.destroy();
+      imagePdfBuilds.delete(buildId);
     }
   },
 };

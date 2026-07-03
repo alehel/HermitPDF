@@ -55,7 +55,6 @@ interface StackPanelProps {
   selectedPageIds: Set<string>;
   onPageClick: (pageId: string, e: React.MouseEvent) => void;
   onStackClick: (stackId: string, e: React.MouseEvent) => void;
-  thumbnailVersions?: Map<string, number>;
   onExtractPageImages?: (stackId: string, pageIndex: number) => void;
   onExtractStackImages?: (stackId: string) => void;
   onDeselect?: () => void;
@@ -169,7 +168,6 @@ export function StackPanel({
   selectedPageIds,
   onPageClick,
   onStackClick,
-  thumbnailVersions,
   onExtractPageImages,
   onExtractStackImages,
   onDeselect,
@@ -355,7 +353,6 @@ export function StackPanel({
                           onPageContextMenu={onPageContextMenu}
                           selectedPageIds={selectedPageIds}
                           onPageClick={onPageClick}
-                          thumbnailVersions={thumbnailVersions}
                         />
                       )}
                     </li>
@@ -397,7 +394,6 @@ export function StackPanel({
                               parentCardElement={gridCardRefs.current.get(stack.id)}
                               selectedPageIds={selectedPageIds}
                               onPageClick={onPageClick}
-                              thumbnailVersions={thumbnailVersions}
                             />
                           </div>
                         )}

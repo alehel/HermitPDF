@@ -18,7 +18,6 @@ interface PageExpansionBoxProps {
   parentCardElement?: HTMLElement | null;
   selectedPageIds: Set<string>;
   onPageClick?: (pageId: string, e: React.MouseEvent) => void;
-  thumbnailVersions?: Map<string, number>;
 }
 
 export const PageExpansionBox = memo(function PageExpansionBox({
@@ -29,7 +28,6 @@ export const PageExpansionBox = memo(function PageExpansionBox({
   parentCardElement,
   selectedPageIds,
   onPageClick,
-  thumbnailVersions,
 }: PageExpansionBoxProps) {
   const boxRef = useRef<HTMLDivElement>(null);
   const [notchLeft, setNotchLeft] = useState<number | null>(null);
@@ -81,7 +79,6 @@ export const PageExpansionBox = memo(function PageExpansionBox({
                   layout="tile"
                   isFocused={selectedPageIds.has(pageRef.id)}
                   onClick={onPageClick}
-                  version={thumbnailVersions?.get(pageRef.id)}
                 />
               ))}
             </div>
@@ -96,7 +93,6 @@ export const PageExpansionBox = memo(function PageExpansionBox({
                   onContextMenu={onPageContextMenu}
                   isFocused={selectedPageIds.has(pageRef.id)}
                   onClick={onPageClick}
-                  version={thumbnailVersions?.get(pageRef.id)}
                 />
               ))}
             </>

@@ -12,13 +12,13 @@ export function useUndoRedoShortcuts(
       const tag = (e.target as HTMLElement)?.tagName;
       if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
 
-      if (e.key === "z" && !e.shiftKey) {
+      // With Shift held, e.key is the uppercase letter ("Z"), so compare
+      // case-insensitively or Ctrl/Cmd+Shift+Z never matches.
+      const key = e.key.toLowerCase();
+      if (key === "z" && !e.shiftKey) {
         e.preventDefault();
         onUndo();
-      } else if (
-        (e.key === "z" && e.shiftKey) ||
-        (e.key === "y" && !e.shiftKey)
-      ) {
+      } else if ((key === "z" && e.shiftKey) || (key === "y" && !e.shiftKey)) {
         e.preventDefault();
         onRedo();
       }

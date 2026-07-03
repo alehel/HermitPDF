@@ -20,7 +20,7 @@ import {
 import { useDropZone } from "@/hooks/useDropZone";
 import { useFileInput } from "@/hooks/useFileInput";
 import { usePdfIngestion } from "@/hooks/usePdfIngestion";
-import { useImagePreviewUrls } from "@/hooks/useImagePreviewUrls";
+import { BlobImage } from "@/components/BlobImage";
 
 export function ExtractWizard() {
   const t = useTranslations("extractImagesWizard");
@@ -49,9 +49,9 @@ export function ExtractWizard() {
     setIsExtracting(true);
     setNoImagesFound(false);
     setExtractedImages([]);
+    setLightboxIndex(null);
     try {
-      const docId = f.stack.pages[0].sourceDocId;
-      const images = await extractImagesFromDocument(docId);
+      const images = await extractImagesFromDocument(f.sourceDocId);
       // If the user removed (or replaced) this file while the extract was
       // running, discard the result.
       if (fileRef.current?.id !== f.id) return;
@@ -114,6 +114,7 @@ export function ExtractWizard() {
     setFile(null);
     setNoImagesFound(false);
     setExtractedImages([]);
+    setLightboxIndex(null);
   }, []);
 
   /* ---- Download all images ---- */
@@ -135,7 +136,10 @@ export function ExtractWizard() {
     [file]
   );
 
-  const previewUrls = useImagePreviewUrls(extractedImages);
+  // Deref once so the lightbox can't crash if the index ever outlives the
+  // images array; render nothing instead.
+  const lightboxImage =
+    lightboxIndex !== null ? extractedImages[lightboxIndex] : undefined;
 
   return (
     <>
@@ -215,9 +219,9 @@ export function ExtractWizard() {
                         onClick={() => setLightboxIndex(i)}
                         className="flex min-h-0 flex-1 cursor-zoom-in items-center justify-center overflow-hidden bg-accent/50 p-2"
                       >
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img
-                          src={previewUrls[i]}
+                        <BlobImage
+                          data={img.data}
+                          mimeType={img.mimeType}
                           alt={t("imageAlt", {
                             page: img.pageIndex + 1,
                             index: img.imageIndex + 1,
@@ -247,7 +251,7 @@ export function ExtractWizard() {
         )}
       </WizardContainer>
 
-      {lightboxIndex !== null && (
+      {lightboxIndex !== null && lightboxImage && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm"
           onClick={() => setLightboxIndex(null)}
@@ -258,12 +262,11 @@ export function ExtractWizard() {
           >
             <div className="mb-3 flex items-center gap-3">
               <span className="text-sm text-white/70">
-                {extractedImages[lightboxIndex!].width}&times;
-                {extractedImages[lightboxIndex!].height}
+                {lightboxImage.width}&times;{lightboxImage.height}
               </span>
               <button
                 type="button"
-                onClick={() => handleDownloadOne(extractedImages[lightboxIndex!])}
+                onClick={() => handleDownloadOne(lightboxImage)}
                 className="flex items-center gap-1.5 rounded-lg bg-white/10 px-3 py-1.5 text-sm font-medium text-white transition-colors hover:bg-white/20"
               >
                 <DownloadIcon />
@@ -275,12 +278,12 @@ export function ExtractWizard() {
               onClick={() => setLightboxIndex(null)}
               className="cursor-zoom-out"
             >
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src={previewUrls[lightboxIndex!]}
+              <BlobImage
+                data={lightboxImage.data}
+                mimeType={lightboxImage.mimeType}
                 alt={t("imageAlt", {
-                  page: extractedImages[lightboxIndex!].pageIndex + 1,
-                  index: extractedImages[lightboxIndex!].imageIndex + 1,
+                  page: lightboxImage.pageIndex + 1,
+                  index: lightboxImage.imageIndex + 1,
                 })}
                 className="pointer-events-none max-h-[80vh] max-w-[90vw] rounded-lg object-contain"
               />
