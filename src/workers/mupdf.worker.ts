@@ -265,8 +265,14 @@ function openLaidOutHtml(
   mupdf.setUserCSS("@page{margin:0}");
   const doc = mupdf.Document.openDocument(html, "text/html");
   try {
-    const contentW = options.pageWidthPt - 2 * options.marginPt;
-    const contentH = options.pageHeightPt - 2 * options.marginPt;
+    const m = options.marginsPt;
+    const contentW = options.pageWidthPt - m.left - m.right;
+    const contentH = options.pageHeightPt - m.top - m.bottom;
+    // resolveLayoutOptions clamps margins so this can't happen from the UI;
+    // guard against direct callers handing over impossible geometry.
+    if (contentW <= 0 || contentH <= 0) {
+      throw new Error("Margins leave no content area");
+    }
     doc.layout(contentW, contentH, options.emSize);
     return doc;
   } catch (e) {
@@ -1800,7 +1806,7 @@ const api = {
         pixmap.clear(255);
         // Shift content in by the margins (points), then scale points → pixels.
         const matrix = mupdf.Matrix.concat(
-          mupdf.Matrix.translate(options.marginPt, options.marginPt),
+          mupdf.Matrix.translate(options.marginsPt.left, options.marginsPt.top),
           mupdf.Matrix.scale(zoom, zoom)
         );
         const page = doc.loadPage(index);
@@ -1854,9 +1860,9 @@ const api = {
       };
       const links: CollectedLink[] = [];
       const pageCount = doc.countPages();
-      const margin = options.marginPt;
+      const m = options.marginsPt;
       const mediabox: Rect = [0, 0, options.pageWidthPt, options.pageHeightPt];
-      const shift = mupdf.Matrix.translate(margin, margin);
+      const shift = mupdf.Matrix.translate(m.left, m.top);
 
       const writer = new mupdf.DocumentWriter(buffer, "PDF", "");
       try {
@@ -1923,7 +1929,7 @@ const api = {
           const page = out.loadPage(link.pageIndex);
           try {
             const [x0, y0, x1, y1] = link.bounds;
-            const rect: Rect = [x0 + margin, y0 + margin, x1 + margin, y1 + margin];
+            const rect: Rect = [x0 + m.left, y0 + m.top, x1 + m.left, y1 + m.top];
             // Internal destinations shift with the content; formatLinkURI
             // turns the adjusted destination back into a #page= URI that
             // createLink stores as a proper GoTo action. (dest x/y can be
@@ -1933,8 +1939,8 @@ const api = {
                 ? link.uri
                 : out.formatLinkURI({
                     ...link.dest,
-                    x: (link.dest.x ?? 0) + margin,
-                    y: (link.dest.y ?? 0) + margin,
+                    x: (link.dest.x ?? 0) + m.left,
+                    y: (link.dest.y ?? 0) + m.top,
                   });
             page.createLink(rect, uri);
           } catch {

@@ -14,12 +14,15 @@ import { checkerboardStyle } from "@/lib/utils";
 import {
   DEFAULT_HTML_TO_PDF_CONFIG,
   HTML_ACCEPT,
-  HTML_MARGIN_PRESETS,
+  HTML_MARGIN_SETTINGS,
   HTML_ORIENTATIONS,
   HTML_PAGE_SIZE_KEYS,
   MAX_EM_SIZE,
   MAX_HTML_BYTES,
+  MAX_MARGIN_MM,
   MIN_EM_SIZE,
+  PRESET_MARGIN_MM,
+  uniformMarginsMm,
   htmlPdfFilename,
   isHtmlFile,
   resolveLayoutOptions,
@@ -509,13 +512,25 @@ export function HtmlToPdfWizard() {
                     <span className="mb-2 block text-sm font-medium text-foreground">
                       {t("margins")}
                     </span>
-                    <div className="flex gap-2 rounded-xl border border-border bg-card p-1">
-                      {HTML_MARGIN_PRESETS.map((margin) => (
+                    <div className="flex gap-1 rounded-xl border border-border bg-card p-1">
+                      {HTML_MARGIN_SETTINGS.map((margin) => (
                         <button
                           key={margin}
                           type="button"
-                          onClick={() => setConfig((c) => ({ ...c, margin }))}
-                          className={`flex-1 rounded-lg px-2 py-2 text-sm font-medium transition-colors ${
+                          onClick={() =>
+                            setConfig((c) => ({
+                              ...c,
+                              margin,
+                              // Seed the custom fields from the outgoing preset
+                              // so switching to Custom starts from what the
+                              // user currently sees.
+                              customMarginsMm:
+                                margin === "custom" && c.margin !== "custom"
+                                  ? uniformMarginsMm(PRESET_MARGIN_MM[c.margin])
+                                  : c.customMarginsMm,
+                            }))
+                          }
+                          className={`flex-1 rounded-lg px-1 py-2 text-sm font-medium transition-colors ${
                             config.margin === margin
                               ? "bg-primary text-primary-foreground"
                               : "text-muted-foreground hover:bg-accent"
@@ -525,6 +540,49 @@ export function HtmlToPdfWizard() {
                         </button>
                       ))}
                     </div>
+                    {config.margin === "custom" && (
+                      <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
+                        {(["top", "right", "bottom", "left"] as const).map((side) => (
+                          <label key={side} className="block">
+                            <span className="mb-1 block text-xs font-medium text-muted-foreground">
+                              {t(`margin_${side}` as Parameters<typeof t>[0])}
+                            </span>
+                            <div className="flex items-center gap-1">
+                              <input
+                                type="number"
+                                min={0}
+                                max={MAX_MARGIN_MM}
+                                step={1}
+                                value={config.customMarginsMm[side]}
+                                onChange={(e) => {
+                                  const v = e.target.valueAsNumber;
+                                  if (isNaN(v)) return;
+                                  setConfig((c) => ({
+                                    ...c,
+                                    customMarginsMm: { ...c.customMarginsMm, [side]: v },
+                                  }));
+                                }}
+                                onBlur={(e) => {
+                                  const v = parseFloat(e.target.value);
+                                  const clamped = Math.min(
+                                    MAX_MARGIN_MM,
+                                    Math.max(0, isNaN(v) ? 0 : v)
+                                  );
+                                  setConfig((c) => ({
+                                    ...c,
+                                    customMarginsMm: { ...c.customMarginsMm, [side]: clamped },
+                                  }));
+                                }}
+                                className="w-full rounded-lg border border-border bg-background px-2 py-1 text-sm text-foreground focus:border-primary focus:outline-none"
+                              />
+                              <span className="text-xs text-muted-foreground">
+                                {t("marginMmUnit")}
+                              </span>
+                            </div>
+                          </label>
+                        ))}
+                      </div>
+                    )}
                   </div>
 
                   <div>

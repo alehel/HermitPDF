@@ -10,9 +10,40 @@ export type HtmlOrientation = "portrait" | "landscape";
 export const HTML_ORIENTATIONS: HtmlOrientation[] = ["portrait", "landscape"];
 
 export type HtmlMarginPreset = "none" | "small" | "normal" | "large";
-export const HTML_MARGIN_PRESETS: HtmlMarginPreset[] = ["none", "small", "normal", "large"];
-const MARGIN_MM: Record<HtmlMarginPreset, number> = { none: 0, small: 10, normal: 20, large: 30 };
+export type HtmlMarginSetting = HtmlMarginPreset | "custom";
+export const HTML_MARGIN_SETTINGS: HtmlMarginSetting[] = [
+  "none",
+  "small",
+  "normal",
+  "large",
+  "custom",
+];
+export const PRESET_MARGIN_MM: Record<HtmlMarginPreset, number> = {
+  none: 0,
+  small: 10,
+  normal: 20,
+  large: 30,
+};
 const PT_PER_MM = 72 / 25.4;
+
+/** Per-side margins in millimetres, as edited in the UI. */
+export interface MarginBoxMm {
+  top: number;
+  right: number;
+  bottom: number;
+  left: number;
+}
+
+/**
+ * Per-side cap. 50mm on every side of the smallest page (A5, 148mm short
+ * edge) still leaves a 48mm content box, so clamped margins can never
+ * produce an empty layout.
+ */
+export const MAX_MARGIN_MM = 50;
+
+export function uniformMarginsMm(mm: number): MarginBoxMm {
+  return { top: mm, right: mm, bottom: mm, left: mm };
+}
 
 export const MIN_EM_SIZE = 8;
 export const MAX_EM_SIZE = 20;
@@ -21,7 +52,9 @@ export const MAX_EM_SIZE = 20;
 export interface HtmlToPdfConfig {
   pageSize: HtmlPageSizeKey;
   orientation: HtmlOrientation;
-  margin: HtmlMarginPreset;
+  margin: HtmlMarginSetting;
+  /** Per-side values used when margin === "custom". */
+  customMarginsMm: MarginBoxMm;
   /** Base font size in points — mupdf's layout `em` parameter. */
   emSize: number;
   keepLinks: boolean;
@@ -31,16 +64,24 @@ export const DEFAULT_HTML_TO_PDF_CONFIG: HtmlToPdfConfig = {
   pageSize: "A4",
   orientation: "portrait",
   margin: "normal",
+  customMarginsMm: uniformMarginsMm(PRESET_MARGIN_MM.normal),
   emSize: 12,
   keepLinks: true,
 };
+
+/** Per-side margins in points, crossing the worker boundary. */
+export interface MarginBoxPt {
+  top: number;
+  right: number;
+  bottom: number;
+  left: number;
+}
 
 /** Resolved geometry crossing the worker boundary. All lengths in points. */
 export interface HtmlLayoutOptions {
   pageWidthPt: number;
   pageHeightPt: number;
-  /** Uniform margin on all four sides. */
-  marginPt: number;
+  marginsPt: MarginBoxPt;
   emSize: number;
   keepLinks: boolean;
   /** PDF info:Title, extracted from the HTML <title> on the main thread. */
@@ -59,12 +100,23 @@ export function resolveLayoutOptions(
 ): HtmlLayoutOptions {
   const { shortPt, longPt } = pageSizeInPoints(config.pageSize);
   const portrait = config.orientation === "portrait";
+  const mm =
+    config.margin === "custom"
+      ? config.customMarginsMm
+      : uniformMarginsMm(PRESET_MARGIN_MM[config.margin]);
+  // Clamp to [0, MAX_MARGIN_MM] so hand-typed values can never leave the
+  // layout with an empty content box (see MAX_MARGIN_MM).
+  const clamp = (v: number) =>
+    Math.min(MAX_MARGIN_MM, Math.max(0, Number.isFinite(v) ? v : 0)) * PT_PER_MM;
   return {
     pageWidthPt: portrait ? shortPt : longPt,
     pageHeightPt: portrait ? longPt : shortPt,
-    // Largest preset (30mm) on the smallest page (A5, 148mm short edge)
-    // still leaves a positive content box, so no clamping is needed.
-    marginPt: MARGIN_MM[config.margin] * PT_PER_MM,
+    marginsPt: {
+      top: clamp(mm.top),
+      right: clamp(mm.right),
+      bottom: clamp(mm.bottom),
+      left: clamp(mm.left),
+    },
     emSize: config.emSize,
     keepLinks: config.keepLinks,
     title,
