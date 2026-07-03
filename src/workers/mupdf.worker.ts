@@ -266,8 +266,10 @@ function openLaidOutHtml(
   const doc = mupdf.Document.openDocument(html, "text/html");
   try {
     const m = options.marginsPt;
-    const contentW = options.pageWidthPt - m.left - m.right;
-    const contentH = options.pageHeightPt - m.top - m.bottom;
+    // Browser-style zoom: lay out at content size ÷ scale; every draw path
+    // then multiplies by scale, so all lengths grow together (Ctrl+/Ctrl-).
+    const contentW = (options.pageWidthPt - m.left - m.right) / options.scale;
+    const contentH = (options.pageHeightPt - m.top - m.bottom) / options.scale;
     // resolveLayoutOptions clamps margins so this can't happen from the UI;
     // guard against direct callers handing over impossible geometry.
     if (contentW <= 0 || contentH <= 0) {
@@ -1804,9 +1806,12 @@ const api = {
       const pixmap = new mupdf.Pixmap(mupdf.ColorSpace.DeviceRGB, bbox, true);
       try {
         pixmap.clear(255);
-        // Shift content in by the margins (points), then scale points → pixels.
+        // Content zoom, then margin shift (points), then points → pixels.
         const matrix = mupdf.Matrix.concat(
-          mupdf.Matrix.translate(options.marginsPt.left, options.marginsPt.top),
+          mupdf.Matrix.concat(
+            mupdf.Matrix.scale(options.scale, options.scale),
+            mupdf.Matrix.translate(options.marginsPt.left, options.marginsPt.top)
+          ),
           mupdf.Matrix.scale(zoom, zoom)
         );
         const page = doc.loadPage(index);
@@ -1861,8 +1866,12 @@ const api = {
       const links: CollectedLink[] = [];
       const pageCount = doc.countPages();
       const m = options.marginsPt;
+      const s = options.scale;
       const mediabox: Rect = [0, 0, options.pageWidthPt, options.pageHeightPt];
-      const shift = mupdf.Matrix.translate(m.left, m.top);
+      const shift = mupdf.Matrix.concat(
+        mupdf.Matrix.scale(s, s),
+        mupdf.Matrix.translate(m.left, m.top)
+      );
 
       const writer = new mupdf.DocumentWriter(buffer, "PDF", "");
       try {
@@ -1929,7 +1938,14 @@ const api = {
           const page = out.loadPage(link.pageIndex);
           try {
             const [x0, y0, x1, y1] = link.bounds;
-            const rect: Rect = [x0 + m.left, y0 + m.top, x1 + m.left, y1 + m.top];
+            // Link geometry lives in layout space — apply the same
+            // zoom-then-margin transform the page contents were drawn with.
+            const rect: Rect = [
+              x0 * s + m.left,
+              y0 * s + m.top,
+              x1 * s + m.left,
+              y1 * s + m.top,
+            ];
             // Internal destinations shift with the content; formatLinkURI
             // turns the adjusted destination back into a #page= URI that
             // createLink stores as a proper GoTo action. (dest x/y can be
@@ -1939,8 +1955,8 @@ const api = {
                 ? link.uri
                 : out.formatLinkURI({
                     ...link.dest,
-                    x: (link.dest.x ?? 0) + m.left,
-                    y: (link.dest.y ?? 0) + m.top,
+                    x: (link.dest.x ?? 0) * s + m.left,
+                    y: (link.dest.y ?? 0) * s + m.top,
                   });
             page.createLink(rect, uri);
           } catch {

@@ -18,10 +18,10 @@ import {
   HTML_MARGIN_SETTINGS,
   HTML_ORIENTATIONS,
   HTML_PAGE_SIZE_KEYS,
-  MAX_EM_SIZE,
   MAX_HTML_BYTES,
   MAX_MARGIN_MM,
-  MIN_EM_SIZE,
+  MAX_ZOOM_PERCENT,
+  MIN_ZOOM_PERCENT,
   PRESET_MARGIN_MM,
   uniformMarginsMm,
   htmlPdfFilename,
@@ -632,22 +632,21 @@ export function HtmlToPdfWizard() {
 
                   <div>
                     <div className="mb-2 flex items-center justify-between">
-                      <span className="text-sm font-medium text-foreground">{t("textSize")}</span>
+                      <span className="text-sm font-medium text-foreground">{t("zoom")}</span>
                       <span className="text-xs font-medium text-foreground tabular-nums">
-                        {t("textSizeUnit", { size: config.emSize })}
+                        {t("zoomValue", { percent: config.zoom })}
                       </span>
                     </div>
                     <input
                       type="range"
-                      min={MIN_EM_SIZE}
-                      max={MAX_EM_SIZE}
-                      step={1}
-                      value={config.emSize}
-                      onChange={(e) =>
-                        setConfig((c) => ({ ...c, emSize: e.target.valueAsNumber }))
-                      }
+                      min={MIN_ZOOM_PERCENT}
+                      max={MAX_ZOOM_PERCENT}
+                      step={10}
+                      value={config.zoom}
+                      onChange={(e) => setConfig((c) => ({ ...c, zoom: e.target.valueAsNumber }))}
                       className="w-full accent-primary"
                     />
+                    <p className="mt-1 text-xs text-muted-foreground">{t("zoomHint")}</p>
                   </div>
 
                   <div className="h-px bg-border" />

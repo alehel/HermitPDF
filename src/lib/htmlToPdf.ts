@@ -45,8 +45,14 @@ export function uniformMarginsMm(mm: number): MarginBoxMm {
   return { top: mm, right: mm, bottom: mm, left: mm };
 }
 
-export const MIN_EM_SIZE = 8;
-export const MAX_EM_SIZE = 20;
+export const MIN_ZOOM_PERCENT = 50;
+export const MAX_ZOOM_PERCENT = 200;
+
+/**
+ * Base font size handed to mupdf's layout() for text with no explicit size.
+ * 12pt ≡ the 16px browser default, so 100% zoom matches what a browser shows.
+ */
+const LAYOUT_EM_PT = 12;
 
 /** Wizard-facing settings state. */
 export interface HtmlToPdfConfig {
@@ -55,8 +61,12 @@ export interface HtmlToPdfConfig {
   margin: HtmlMarginSetting;
   /** Per-side values used when margin === "custom". */
   customMarginsMm: MarginBoxMm;
-  /** Base font size in points — mupdf's layout `em` parameter. */
-  emSize: number;
+  /**
+   * Browser-style page zoom in percent (Ctrl+/Ctrl-): the page is laid out
+   * at contentWidth ÷ zoom and drawn scaled by zoom, so explicit px sizes,
+   * boxes, and images all grow or shrink together.
+   */
+  zoom: number;
   keepLinks: boolean;
   /** Rewrite flex/grid layouts with the browser engine before converting. */
   adaptLayout: boolean;
@@ -67,7 +77,7 @@ export const DEFAULT_HTML_TO_PDF_CONFIG: HtmlToPdfConfig = {
   orientation: "portrait",
   margin: "normal",
   customMarginsMm: uniformMarginsMm(PRESET_MARGIN_MM.normal),
-  emSize: 12,
+  zoom: 100,
   keepLinks: true,
   adaptLayout: true,
 };
@@ -86,6 +96,8 @@ export interface HtmlLayoutOptions {
   pageHeightPt: number;
   marginsPt: MarginBoxPt;
   emSize: number;
+  /** Content scale factor (zoom ÷ 100): layout at size ÷ scale, draw × scale. */
+  scale: number;
   keepLinks: boolean;
   /** PDF info:Title, extracted from the HTML <title> on the main thread. */
   title?: string;
@@ -111,6 +123,9 @@ export function resolveLayoutOptions(
   // layout with an empty content box (see MAX_MARGIN_MM).
   const clamp = (v: number) =>
     Math.min(MAX_MARGIN_MM, Math.max(0, Number.isFinite(v) ? v : 0)) * PT_PER_MM;
+  const zoom = Number.isFinite(config.zoom)
+    ? Math.min(MAX_ZOOM_PERCENT, Math.max(MIN_ZOOM_PERCENT, config.zoom))
+    : 100;
   return {
     pageWidthPt: portrait ? shortPt : longPt,
     pageHeightPt: portrait ? longPt : shortPt,
@@ -120,7 +135,8 @@ export function resolveLayoutOptions(
       bottom: clamp(mm.bottom),
       left: clamp(mm.left),
     },
-    emSize: config.emSize,
+    emSize: LAYOUT_EM_PT,
+    scale: zoom / 100,
     keepLinks: config.keepLinks,
     title,
     baseUrl,
@@ -136,10 +152,13 @@ export function htmlPdfFilename(stem: string | null): string {
  * The content-box width in CSS pixels for a given layout — the viewport
  * width the layout-lowering iframe must use so the browser wraps lines and
  * flex/grid rows at the same width mupdf will lay out to (1px = 0.75pt).
+ * Zoom widens the layout viewport (÷ scale), exactly like browser zoom.
  */
 export function contentWidthCssPx(options: HtmlLayoutOptions): number {
   return Math.round(
-    ((options.pageWidthPt - options.marginsPt.left - options.marginsPt.right) * 96) / 72
+    ((options.pageWidthPt - options.marginsPt.left - options.marginsPt.right) /
+      options.scale) *
+      (96 / 72)
   );
 }
 
