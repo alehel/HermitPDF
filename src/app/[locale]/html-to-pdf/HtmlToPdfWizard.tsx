@@ -33,7 +33,7 @@ import {
   type HtmlToPdfConfig,
 } from "@/lib/htmlToPdf";
 import { fetchHtmlPage, FetchPageError } from "@/lib/fetchHtmlPage";
-import { lowerHtmlForPdf, mightNeedLowering } from "@/lib/lowerHtml";
+import { lowerHtmlForPdf, needsBrowserPass } from "@/lib/lowerHtml";
 import { convertHtmlToPdf, renderHtmlPreview } from "@/lib/mupdfClient";
 import { downloadPdf } from "@/lib/pdfExport";
 import { useDebouncedValue } from "@/hooks/useDebouncedValue";
@@ -236,19 +236,20 @@ export function HtmlToPdfWizard() {
     async (
       raw: string,
       options: HtmlLayoutOptions,
-      cfg: Pick<HtmlToPdfConfig, "adaptLayout" | "stripWhitespace">
+      cfg: Pick<HtmlToPdfConfig, "adaptLayout" | "stripWhitespace" | "printStyles">
     ): Promise<string> => {
-      const adapt = cfg.adaptLayout && mightNeedLowering(raw);
-      if (!adapt && !cfg.stripWhitespace) return raw;
+      const lowering = {
+        adaptLayout: cfg.adaptLayout,
+        fullWidth: cfg.stripWhitespace,
+        printStyles: cfg.printStyles,
+      };
+      if (!needsBrowserPass(raw, lowering)) return raw;
       const width = contentWidthCssPx(options);
-      const key = `${width}|${adapt}|${cfg.stripWhitespace}|${raw}`;
+      const key = `${width}|${lowering.adaptLayout}|${lowering.fullWidth}|${lowering.printStyles}|${raw}`;
       const cache = lowerCacheRef.current;
       if (cache && cache.key === key) return cache.out;
       try {
-        const out = await lowerHtmlForPdf(raw, width, {
-          adaptLayout: adapt,
-          fullWidth: cfg.stripWhitespace,
-        });
+        const out = await lowerHtmlForPdf(raw, width, lowering);
         lowerCacheRef.current = { key, out };
         return out;
       } catch {
@@ -729,6 +730,32 @@ export function HtmlToPdfWizard() {
                         {t("stripWhitespace")}
                       </span>
                       <p className="text-xs text-muted-foreground">{t("stripWhitespaceDesc")}</p>
+                    </div>
+                  </label>
+
+                  <div className="h-px bg-border" />
+
+                  <label className="flex items-center gap-3">
+                    <button
+                      type="button"
+                      role="switch"
+                      aria-checked={config.printStyles}
+                      onClick={() => setConfig((c) => ({ ...c, printStyles: !c.printStyles }))}
+                      className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors ${
+                        config.printStyles ? "bg-primary" : "bg-border"
+                      }`}
+                    >
+                      <span
+                        className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform ${
+                          config.printStyles ? "translate-x-4" : "translate-x-0.5"
+                        }`}
+                      />
+                    </button>
+                    <div>
+                      <span className="text-sm font-medium text-foreground">
+                        {t("printStyles")}
+                      </span>
+                      <p className="text-xs text-muted-foreground">{t("printStylesDesc")}</p>
                     </div>
                   </label>
                 </div>

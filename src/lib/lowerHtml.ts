@@ -18,16 +18,29 @@ const PX_TO_PT = 72 / 96;
 const LOAD_TIMEOUT_MS = 4000;
 const IMAGE_SETTLE_MS = 800;
 
-/** Fast pre-check: nothing to lower unless flex/grid appears textually. */
-export function mightNeedLowering(html: string): boolean {
-  return /display\s*:\s*(inline-)?(flex|grid)/i.test(html);
-}
-
 export interface LoweringOptions {
-  /** Rewrite flex/grid rows into tables. */
+  /**
+   * Fidelity passes: rewrite flex/grid rows into tables, hoist @media/
+   * @supports/@layer rules (mupdf ignores all conditional CSS), rasterize
+   * inline SVGs, give gradients a solid-color fallback, and drop
+   * position:fixed chrome.
+   */
   adaptLayout: boolean;
   /** Expand width-constrained centered columns to the full content width. */
   fullWidth: boolean;
+  /** Emulate print media: apply @media print rules, drop screen-only ones. */
+  printStyles: boolean;
+}
+
+// Textual fast-path: constructs the browser pass can actually improve.
+const FIDELITY_RE =
+  /display\s*:\s*(inline-)?(flex|grid)|@media|@supports|@layer|<svg[\s>]|gradient\(|position\s*:\s*(fixed|sticky)/i;
+
+/** Whether running the browser pass could change anything for this input. */
+export function needsBrowserPass(html: string, opts: LoweringOptions): boolean {
+  if (opts.fullWidth) return true;
+  if (opts.printStyles && /@media|media\s*=/i.test(html)) return true;
+  return opts.adaptLayout && FIDELITY_RE.test(html);
 }
 
 export async function lowerHtmlForPdf(
@@ -61,8 +74,18 @@ export async function lowerHtmlForPdf(
     // data: images decode asynchronously and can affect layout.
     await settleImages(doc);
 
-    // Widen first: flex/grid rows are measured after the columns expand, so
-    // both passes see the same final geometry.
+    // Order matters: conditional CSS is applied first (it can restyle
+    // everything below), fixed chrome is dropped and SVGs swapped for
+    // same-size raster images before any geometry is measured, and widening
+    // runs before flex/grid measurement so rows spread across the final
+    // column width.
+    const hoisted =
+      opts.adaptLayout || opts.printStyles
+        ? hoistConditionalCss(doc, win, opts.printStyles)
+        : 0;
+    const dropped = opts.adaptLayout ? removeFixedElements(doc, win) : 0;
+    const rasterized = opts.adaptLayout ? await rasterizeSvgs(doc) : 0;
+    const tinted = opts.adaptLayout ? fallbackGradientBackgrounds(doc, win) : 0;
     const widened = opts.fullWidth ? stripSideWhitespace(doc, win) : 0;
 
     const plans = opts.adaptLayout ? collectFlexGridPlans(doc, win) : [];
@@ -70,7 +93,13 @@ export async function lowerHtmlForPdf(
     // side space to be stripped.
     const centered =
       opts.adaptLayout && !opts.fullWidth ? collectCenteringFixes(doc, win) : [];
-    if (plans.length === 0 && centered.length === 0 && widened === 0) return html;
+    if (
+      plans.length === 0 &&
+      centered.length === 0 &&
+      hoisted + dropped + rasterized + tinted + widened === 0
+    ) {
+      return html;
+    }
 
     for (const plan of plans) applyFlexGridPlan(doc, plan);
     for (const fix of centered) {
@@ -137,6 +166,199 @@ async function settleImages(doc: Document): Promise<void> {
     )
   );
   await Promise.race([all, new Promise<void>((r) => setTimeout(r, IMAGE_SETTLE_MS))]);
+}
+
+/**
+ * mupdf ignores every conditional CSS block — @media, @supports, and @layer
+ * (verified empirically) — so sites keeping their styling inside
+ * `@media screen and (min-width: …)` render unstyled. Unwrap the rules that
+ * apply at our synthetic viewport and write the flattened text back into
+ * each <style> element, which both re-styles the iframe (so measurements
+ * match) and makes the rules visible to mupdf in the serialized output.
+ *
+ * With `preferPrint`, media lists are evaluated the way a printing browser
+ * would: print-typed queries match, screen-typed ones do not.
+ */
+function hoistConditionalCss(
+  doc: Document,
+  win: Window & typeof globalThis,
+  preferPrint: boolean
+): number {
+  let changed = 0;
+  for (const styleEl of [...doc.querySelectorAll("style")]) {
+    const mediaAttr = styleEl.getAttribute("media");
+    if (mediaAttr) {
+      if (!mediaMatches(win, mediaAttr, preferPrint)) {
+        styleEl.remove();
+        changed++;
+        continue;
+      }
+      styleEl.removeAttribute("media");
+      changed++;
+    }
+    const sheet = styleEl.sheet;
+    if (!sheet) continue;
+    let rules: CSSRuleList;
+    try {
+      rules = sheet.cssRules;
+    } catch {
+      continue;
+    }
+    if (![...rules].some(isConditionalRule(win))) continue;
+    const flattened = flattenCssRules(win, rules, preferPrint);
+    styleEl.textContent = flattened; // re-parses: iframe layout now matches
+    changed++;
+  }
+  return changed;
+}
+
+function isConditionalRule(win: Window & typeof globalThis) {
+  return (rule: CSSRule) =>
+    rule instanceof win.CSSMediaRule ||
+    rule instanceof win.CSSSupportsRule ||
+    rule instanceof win.CSSImportRule ||
+    ("CSSLayerBlockRule" in win && rule instanceof win.CSSLayerBlockRule);
+}
+
+function flattenCssRules(
+  win: Window & typeof globalThis,
+  rules: CSSRuleList,
+  preferPrint: boolean
+): string {
+  let out = "";
+  for (const rule of rules) {
+    if (rule instanceof win.CSSMediaRule) {
+      if (mediaMatches(win, rule.conditionText, preferPrint)) {
+        out += flattenCssRules(win, rule.cssRules, preferPrint);
+      }
+    } else if (rule instanceof win.CSSSupportsRule) {
+      if (win.CSS.supports(rule.conditionText)) {
+        out += flattenCssRules(win, rule.cssRules, preferPrint);
+      }
+    } else if ("CSSLayerBlockRule" in win && rule instanceof win.CSSLayerBlockRule) {
+      // Layer order nuances are lost, but source order is preserved — far
+      // closer than mupdf dropping the whole block.
+      out += flattenCssRules(win, rule.cssRules, preferPrint);
+    } else if (rule instanceof win.CSSImportRule) {
+      // External imports are stripped/blocked — nothing to emit.
+    } else {
+      out += rule.cssText + "\n";
+    }
+  }
+  return out;
+}
+
+function mediaMatches(
+  win: Window & typeof globalThis,
+  condition: string,
+  preferPrint: boolean
+): boolean {
+  if (!preferPrint) return win.matchMedia(condition).matches; // iframe = screen
+  // Print emulation per comma-separated query: print → evaluate its feature
+  // conditions (type rewritten to all), screen-typed → never matches.
+  const rewritten = condition
+    .split(",")
+    .map((q) =>
+      /\bprint\b/i.test(q)
+        ? q.replace(/\bprint\b/gi, "all")
+        : /\bscreen\b/i.test(q)
+          ? "not all"
+          : q
+    )
+    .join(",");
+  return win.matchMedia(rewritten).matches;
+}
+
+/**
+ * mupdf has no viewport, so position:fixed chrome (cookie banners, floating
+ * navbars, chat bubbles) falls into the document flow as junk blocks —
+ * remove it. Sticky elements stay: they occupy normal flow space and render
+ * correctly as static.
+ */
+function removeFixedElements(doc: Document, win: Window & typeof globalThis): number {
+  let removed = 0;
+  for (const el of [...doc.body.querySelectorAll<HTMLElement>("*")]) {
+    if (!el.isConnected || !(el instanceof win.HTMLElement)) continue;
+    if (win.getComputedStyle(el).position === "fixed") {
+      el.remove();
+      removed++;
+    }
+  }
+  return removed;
+}
+
+/**
+ * mupdf drops inline <svg> entirely (verified: zero ink). Rasterize each one
+ * in the parent document at 2× and swap in a same-size data: PNG <img>.
+ * SVG-as-image never loads external resources, so the canvas stays clean and
+ * nothing touches the network.
+ */
+async function rasterizeSvgs(doc: Document): Promise<number> {
+  const svgs = [...doc.body.querySelectorAll("svg")];
+  let replaced = 0;
+  await Promise.all(
+    svgs.map(async (svg) => {
+      try {
+        const rect = svg.getBoundingClientRect();
+        if (rect.width < 1 || rect.height < 1) return;
+        const clone = svg.cloneNode(true) as SVGElement;
+        clone.setAttribute("xmlns", "http://www.w3.org/2000/svg");
+        clone.setAttribute("width", String(Math.round(rect.width)));
+        clone.setAttribute("height", String(Math.round(rect.height)));
+        const svgUrl =
+          "data:image/svg+xml;charset=utf-8," +
+          encodeURIComponent(new XMLSerializer().serializeToString(clone));
+        const image = new Image();
+        await new Promise<void>((resolve, reject) => {
+          image.onload = () => resolve();
+          image.onerror = () => reject(new Error("svg decode failed"));
+          image.src = svgUrl;
+        });
+        const scale = 2;
+        const canvas = document.createElement("canvas");
+        canvas.width = Math.max(1, Math.round(rect.width * scale));
+        canvas.height = Math.max(1, Math.round(rect.height * scale));
+        const ctx = canvas.getContext("2d");
+        if (!ctx) return;
+        ctx.drawImage(image, 0, 0, canvas.width, canvas.height);
+        const replacement = doc.createElement("img");
+        replacement.setAttribute("src", canvas.toDataURL("image/png"));
+        replacement.setAttribute("width", String(Math.round(rect.width)));
+        replacement.setAttribute("height", String(Math.round(rect.height)));
+        svg.replaceWith(replacement);
+        replaced++;
+      } catch {
+        // keep the original; mupdf drops it, same as before
+      }
+    })
+  );
+  return replaced;
+}
+
+/**
+ * Gradient backgrounds render as nothing in mupdf. Approximate each with a
+ * solid fill from the gradient's first color stop so tinted sections keep
+ * their tone instead of turning white.
+ */
+function fallbackGradientBackgrounds(
+  doc: Document,
+  win: Window & typeof globalThis
+): number {
+  let tinted = 0;
+  for (const el of doc.body.querySelectorAll<HTMLElement>("*")) {
+    if (!(el instanceof win.HTMLElement)) continue;
+    const cs = win.getComputedStyle(el);
+    if (!cs.backgroundImage.includes("gradient(")) continue;
+    const firstStop = cs.backgroundImage.match(/rgba?\([^)]*\)/);
+    if (!firstStop) continue;
+    el.style.setProperty("background-image", "none", "important");
+    // Keep an author-set solid background; only fill transparent ones.
+    if (/^rgba\(\s*0,\s*0,\s*0,\s*0\s*\)$|^transparent$/.test(cs.backgroundColor)) {
+      el.style.setProperty("background-color", firstStop[0], "important");
+    }
+    tinted++;
+  }
+  return tinted;
 }
 
 // Replaced/self-sized elements that must never be stretched to full width.

@@ -72,6 +72,8 @@ export interface HtmlToPdfConfig {
   adaptLayout: boolean;
   /** Expand centered content columns to the full page width. */
   stripWhitespace: boolean;
+  /** Convert with the page's @media print styles, like a browser printing. */
+  printStyles: boolean;
 }
 
 export const DEFAULT_HTML_TO_PDF_CONFIG: HtmlToPdfConfig = {
@@ -83,6 +85,7 @@ export const DEFAULT_HTML_TO_PDF_CONFIG: HtmlToPdfConfig = {
   keepLinks: true,
   adaptLayout: true,
   stripWhitespace: false,
+  printStyles: false,
 };
 
 /** Per-side margins in points, crossing the worker boundary. */
