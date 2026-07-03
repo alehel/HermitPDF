@@ -33,15 +33,13 @@ export function useDelayedFlag(
     } else if (!active && visible) {
       const shownAt = shownAtRef.current ?? Date.now();
       const remaining = Math.max(0, minDurationMs - (Date.now() - shownAt));
-      if (remaining === 0) {
+      // Always hide via a timer — 0ms when the minimum display time has
+      // already elapsed. A synchronous setState here would cascade another
+      // render into the effect flush.
+      hideTimer = setTimeout(() => {
         shownAtRef.current = null;
         setVisible(false);
-      } else {
-        hideTimer = setTimeout(() => {
-          shownAtRef.current = null;
-          setVisible(false);
-        }, remaining);
-      }
+      }, remaining);
     }
 
     return () => {

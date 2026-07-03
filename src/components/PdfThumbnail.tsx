@@ -34,17 +34,32 @@ export function PdfThumbnail({
   // Aspect ratio of the page at its natural (unrotated) orientation: height / width.
   const [naturalAspectRatio, setNaturalAspectRatio] = useState<number>(297 / 210); // default A4-ish
 
+  // When this component instance is reused for a different page, adopt the
+  // new page's cached thumbnail during render (React's "adjust state when a
+  // prop changes" pattern) instead of flashing the stale bitmap and fixing
+  // it up in an effect.
+  const [renderedForPageId, setRenderedForPageId] = useState(pageRef.id);
+  if (renderedForPageId !== pageRef.id) {
+    setRenderedForPageId(pageRef.id);
+    setDataUrl(getThumbnail(pageRef.id));
+  }
+
   useEffect(() => {
-    // Check cache — may have been updated externally
-    const cached = getThumbnail(pageRef.id);
-    if (cached) {
-      setDataUrl(cached);
-      return;
-    }
+    // Already have a bitmap — nothing to fetch. Rotation changes are handled
+    // via CSS transform on the existing bitmap, so no re-render is needed.
+    if (dataUrl) return;
 
     let cancelled = false;
 
     async function doRender() {
+      // Another instance showing the same page may have rendered it while
+      // this one waited for visibility — adopt the shared cache entry rather
+      // than rendering again (which would revoke the other instance's URL).
+      const cached = getThumbnail(pageRef.id);
+      if (cached) {
+        if (!cancelled) setDataUrl(cached);
+        return;
+      }
       try {
         await loadDocument(pageRef.sourceDocId);
         if (cancelled) return;
@@ -66,12 +81,6 @@ export function PdfThumbnail({
       } catch {
         // PDF may have been removed while rendering
       }
-    }
-
-    // Already have a thumbnail — nothing to do. Rotation changes are handled
-    // via CSS transform on the existing bitmap, so no re-render is needed.
-    if (dataUrl) {
-      return;
     }
 
     // First load — show placeholder and lazy-load via IntersectionObserver
@@ -125,6 +134,9 @@ export function PdfThumbnail({
           position: "relative",
         }}
       >
+        {/* Blob URLs of locally rendered thumbnails can't go through the
+            Next image optimizer. */}
+        {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
           src={dataUrl}
           alt="Page thumbnail"

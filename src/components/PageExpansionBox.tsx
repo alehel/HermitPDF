@@ -15,7 +15,14 @@ interface PageExpansionBoxProps {
   pages: PageRef[];
   onPageContextMenu?: (e: React.MouseEvent, stackId: string, pageIndex: number) => void;
   variant?: "list" | "grid";
-  parentCardElement?: HTMLElement | null;
+  /**
+   * Grid variant only: the parent panel's registry of stack-card elements,
+   * used to position the notch under this box's own card. Passed as the ref
+   * object (stable identity) and read inside the layout effect — by then the
+   * card's ref callback has run, so the element is present even on the very
+   * first commit.
+   */
+  parentCardsRef?: React.RefObject<Map<string, HTMLElement>>;
   selectedPageIds: Set<string>;
   onPageClick?: (pageId: string, e: React.MouseEvent) => void;
 }
@@ -25,7 +32,7 @@ export const PageExpansionBox = memo(function PageExpansionBox({
   pages,
   onPageContextMenu,
   variant = "list",
-  parentCardElement,
+  parentCardsRef,
   selectedPageIds,
   onPageClick,
 }: PageExpansionBoxProps) {
@@ -33,11 +40,12 @@ export const PageExpansionBox = memo(function PageExpansionBox({
   const [notchLeft, setNotchLeft] = useState<number | null>(null);
 
   useLayoutEffect(() => {
+    const parentCardElement = parentCardsRef?.current.get(stackId);
     if (variant !== "grid" || !parentCardElement || !boxRef.current) return;
     const cardRect = parentCardElement.getBoundingClientRect();
     const boxRect = boxRef.current.getBoundingClientRect();
     setNotchLeft(cardRect.left + cardRect.width / 2 - boxRect.left);
-  }, [variant, parentCardElement, stackId]);
+  }, [variant, parentCardsRef, stackId]);
 
   const isGrid = variant === "grid";
   const pageIds = pages.map((p) => p.id);

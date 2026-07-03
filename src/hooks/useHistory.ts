@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { PageStack, PageRef } from "@/lib/types";
 
 export interface HistorySnapshot {
@@ -39,11 +39,15 @@ export function useHistory(onEvict?: (evicted: HistorySnapshot) => void) {
   // We maintain both React state (`current`) and a ref (`currentRef`) because
   // callbacks created with useCallback([]) need synchronous access to the
   // latest snapshot without re-creating the callback on every commit.
-  // State drives re-renders; the ref is for stable callbacks.
+  // State drives re-renders; the ref is for stable callbacks. The ref never
+  // needs syncing during render: every state transition goes through
+  // commit/undo/redo/replace below, and each of them updates the ref
+  // alongside its setCurrent call.
   const currentRef = useRef(current);
-  currentRef.current = current;
   const onEvictRef = useRef(onEvict);
-  onEvictRef.current = onEvict;
+  useEffect(() => {
+    onEvictRef.current = onEvict;
+  }, [onEvict]);
 
   const commit = useCallback((next: HistorySnapshot) => {
     pastRef.current.push(currentRef.current);

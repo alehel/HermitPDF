@@ -174,7 +174,7 @@ export function StackPanel({
 }: StackPanelProps) {
   const tItem = useTranslations("documentItem");
   const t = useTranslations("documentPanel");
-  const gridCardRefs = useRef<Map<string, HTMLDivElement>>(new Map());
+  const gridCardRefs = useRef<Map<string, HTMLElement>>(new Map());
 
   const [activeDrag, setActiveDrag] = useState<SortableData | null>(null);
   const [fileDragOver, setFileDragOver] = useState(false);
@@ -391,7 +391,7 @@ export function StackPanel({
                               pages={stack.pages}
                               onPageContextMenu={onPageContextMenu}
                               variant="grid"
-                              parentCardElement={gridCardRefs.current.get(stack.id)}
+                              parentCardsRef={gridCardRefs}
                               selectedPageIds={selectedPageIds}
                               onPageClick={onPageClick}
                             />

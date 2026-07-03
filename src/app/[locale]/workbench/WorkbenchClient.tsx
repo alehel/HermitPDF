@@ -71,13 +71,21 @@ export function WorkbenchClient() {
 
   const { stacks, expandedStackIds } = snapshot;
 
-  allDocIdsRef.current = allReferencedDocIds;
-  allPageIdsRef.current = allReferencedPageIds;
-
   const stacksRef = useRef(stacks);
-  stacksRef.current = stacks;
   const expandedRef = useRef(expandedStackIds);
-  expandedRef.current = expandedStackIds;
+
+  // Mirror the latest values into refs after each commit so the stable
+  // callbacks below (and the unmount cleanup) can read them without being
+  // re-created on every render. Mirrored in an effect — not during render —
+  // so interrupted or discarded renders never leak into the refs; event
+  // handlers only run after React has flushed pending effects, so they
+  // always observe the committed values.
+  useEffect(() => {
+    allDocIdsRef.current = allReferencedDocIds;
+    allPageIdsRef.current = allReferencedPageIds;
+    stacksRef.current = stacks;
+    expandedRef.current = expandedStackIds;
+  });
 
   const [rejectedFiles, setRejectedFiles] = useState<string[]>([]);
   const [passwordProtectedFiles, setPasswordProtectedFiles] = useState<string[]>([]);

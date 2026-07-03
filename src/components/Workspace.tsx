@@ -92,6 +92,11 @@ export function Workspace({
     return result;
   }, [stacks]);
 
+  // TanStack Virtual is a known-incompatible library for the React Compiler
+  // (its returned functions can't be memoized safely), so the compiler skips
+  // this component. That's expected and fine here — nothing memoized consumes
+  // the virtualizer's functions.
+  // eslint-disable-next-line react-hooks/incompatible-library
   const virtualizer = useVirtualizer({
     count: items.length,
     getScrollElement: () => scrollRef.current,

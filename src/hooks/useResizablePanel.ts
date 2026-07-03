@@ -19,42 +19,43 @@ export function useResizablePanel(containerRef: React.RefObject<HTMLDivElement |
 
   const isNarrow = containerWidth > 0 && containerWidth < NARROW_THRESHOLD;
 
-  // Resolve initial preview width on mount with fallback chain:
-  // 1. localStorage (user's last drag position), clamped to current container
-  // 2. 40% of measured container width (first-time visit with DOM ready)
-  // 3. 400px hardcoded fallback (SSR or if container hasn't mounted yet)
-  useEffect(() => {
-    if (initializedRef.current) return;
-    initializedRef.current = true;
-
-    const el = containerRef.current;
-    const cw = el ? el.getBoundingClientRect().width : 0;
-    const stored = localStorage.getItem(STORAGE_KEY);
-    // A non-numeric stored value would turn the clamp into NaN and break the
-    // panel layout, so fall through to the ratio/default branches instead.
-    const parsed = stored ? parseInt(stored, 10) : NaN;
-    if (!Number.isNaN(parsed)) {
-      const maxPreview = cw > 0 ? cw - MIN_LEFT - DIVIDER_WIDTH : parsed;
-      setPreviewWidth(Math.min(maxPreview, Math.max(MIN_RIGHT, parsed)));
-    } else if (cw > 0) {
-      setPreviewWidth(Math.max(MIN_RIGHT, Math.floor(cw * DEFAULT_PREVIEW_RATIO)));
-    } else {
-      setPreviewWidth(400);
-    }
-
-    const storedPreview = localStorage.getItem(PREVIEW_KEY);
-    if (storedPreview !== null) {
-      setPreviewVisible(storedPreview !== "false");
-    }
-  }, [containerRef]);
-
-  // Track container width via ResizeObserver
+  // Track container width via ResizeObserver. The observer reports the first
+  // real measurement asynchronously right after observe(), which is also
+  // where the one-time preview-width initialization happens — state is set
+  // from the observer callback (an external-system subscription), never
+  // synchronously in the effect body.
   useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
 
     const ro = new ResizeObserver(([entry]) => {
-      setContainerWidth(entry.contentRect.width);
+      const cw = entry.contentRect.width;
+      setContainerWidth(cw);
+
+      if (initializedRef.current) return;
+      initializedRef.current = true;
+
+      // Resolve initial preview width with fallback chain:
+      // 1. localStorage (user's last drag position), clamped to the container
+      // 2. 40% of the measured container width (first-time visit)
+      // 3. 400px hardcoded fallback (container measured at zero width)
+      const stored = localStorage.getItem(STORAGE_KEY);
+      // A non-numeric stored value would turn the clamp into NaN and break
+      // the panel layout, so fall through to the ratio/default branches.
+      const parsed = stored ? parseInt(stored, 10) : NaN;
+      if (!Number.isNaN(parsed)) {
+        const maxPreview = cw > 0 ? cw - MIN_LEFT - DIVIDER_WIDTH : parsed;
+        setPreviewWidth(Math.min(maxPreview, Math.max(MIN_RIGHT, parsed)));
+      } else if (cw > 0) {
+        setPreviewWidth(Math.max(MIN_RIGHT, Math.floor(cw * DEFAULT_PREVIEW_RATIO)));
+      } else {
+        setPreviewWidth(400);
+      }
+
+      const storedPreview = localStorage.getItem(PREVIEW_KEY);
+      if (storedPreview !== null) {
+        setPreviewVisible(storedPreview !== "false");
+      }
     });
     ro.observe(el);
     return () => ro.disconnect();
