@@ -299,40 +299,36 @@ export function HtmlToPdfWizard() {
 
   const htmlByteSize = useMemo(() => (html ? new Blob([html]).size : 0), [html]);
 
-  // One margin field, reused at the four compass positions of the custom grid.
-  const marginInput = (side: "top" | "right" | "bottom" | "left") => (
-    <label className="block">
-      <span className="mb-1 block text-center text-xs font-medium text-muted-foreground">
-        {t(`margin_${side}` as Parameters<typeof t>[0])}
-      </span>
-      <div className="flex items-center justify-center gap-1">
-        <input
-          type="number"
-          min={0}
-          max={MAX_MARGIN_MM}
-          step={1}
-          value={config.customMarginsMm[side]}
-          onChange={(e) => {
-            const v = e.target.valueAsNumber;
-            if (isNaN(v)) return;
-            setConfig((c) => ({
-              ...c,
-              customMarginsMm: { ...c.customMarginsMm, [side]: v },
-            }));
-          }}
-          onBlur={(e) => {
-            const v = parseFloat(e.target.value);
-            const clamped = Math.min(MAX_MARGIN_MM, Math.max(0, isNaN(v) ? 0 : v));
-            setConfig((c) => ({
-              ...c,
-              customMarginsMm: { ...c.customMarginsMm, [side]: clamped },
-            }));
-          }}
-          className="w-16 rounded-lg border border-border bg-background px-2 py-1 text-sm text-foreground focus:border-primary focus:outline-none"
-        />
-        <span className="text-xs text-muted-foreground">{t("marginMmUnit")}</span>
-      </div>
-    </label>
+  // One margin field, positioned inside the margin band it controls on the
+  // page diagram below. The position is the label; screen readers get the
+  // side name via aria-label.
+  const marginInput = (side: "top" | "right" | "bottom" | "left", position: string) => (
+    <input
+      type="number"
+      min={0}
+      max={MAX_MARGIN_MM}
+      step={1}
+      value={config.customMarginsMm[side]}
+      aria-label={t(`margin_${side}` as Parameters<typeof t>[0])}
+      title={t(`margin_${side}` as Parameters<typeof t>[0])}
+      onChange={(e) => {
+        const v = e.target.valueAsNumber;
+        if (isNaN(v)) return;
+        setConfig((c) => ({
+          ...c,
+          customMarginsMm: { ...c.customMarginsMm, [side]: v },
+        }));
+      }}
+      onBlur={(e) => {
+        const v = parseFloat(e.target.value);
+        const clamped = Math.min(MAX_MARGIN_MM, Math.max(0, isNaN(v) ? 0 : v));
+        setConfig((c) => ({
+          ...c,
+          customMarginsMm: { ...c.customMarginsMm, [side]: clamped },
+        }));
+      }}
+      className={`h-8 w-12 rounded-md border border-border bg-background text-center text-sm text-foreground tabular-nums focus:border-primary focus:outline-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none ${position}`}
+    />
   );
 
   const pasteEditor = (
@@ -545,9 +541,12 @@ export function HtmlToPdfWizard() {
                   </div>
 
                   <div>
-                    <span className="mb-2 block text-sm font-medium text-foreground">
-                      {t("margins")}
-                    </span>
+                    <div className="mb-2 flex items-center justify-between">
+                      <span className="text-sm font-medium text-foreground">{t("margins")}</span>
+                      {config.margin === "custom" && (
+                        <span className="text-xs text-muted-foreground">{t("marginsMmHint")}</span>
+                      )}
+                    </div>
                     <div className="flex gap-1 rounded-xl border border-border bg-card p-1">
                       {HTML_MARGIN_SETTINGS.map((margin) => (
                         <button
@@ -577,24 +576,22 @@ export function HtmlToPdfWizard() {
                       ))}
                     </div>
                     {config.margin === "custom" && (
-                      // Compass layout: each field sits on the side of the
-                      // page it controls, around a page-shaped glyph that
-                      // follows the chosen orientation.
-                      <div className="mt-3 grid grid-cols-3 items-center justify-items-center gap-x-2 gap-y-3">
-                        <div />
-                        {marginInput("top")}
-                        <div />
-                        {marginInput("left")}
+                      // Page diagram: a sheet whose margin bands hold the four
+                      // inputs, wrapping a dashed content area with skeleton
+                      // text lines.
+                      <div className="relative mt-3 h-52 rounded-lg border border-border bg-background">
                         <div
                           aria-hidden="true"
-                          className={`rounded-md border border-dashed border-border bg-background ${
-                            config.orientation === "portrait" ? "h-16 w-12" : "h-12 w-16"
-                          }`}
-                        />
-                        {marginInput("right")}
-                        <div />
-                        {marginInput("bottom")}
-                        <div />
+                          className="absolute inset-x-16 inset-y-12 flex flex-col justify-center gap-1.5 rounded border border-dashed border-border p-3"
+                        >
+                          <div className="h-1 rounded bg-border" />
+                          <div className="h-1 w-5/6 rounded bg-border" />
+                          <div className="h-1 w-2/3 rounded bg-border" />
+                        </div>
+                        {marginInput("top", "absolute left-1/2 top-2 -translate-x-1/2")}
+                        {marginInput("left", "absolute left-2 top-1/2 -translate-y-1/2")}
+                        {marginInput("right", "absolute right-2 top-1/2 -translate-y-1/2")}
+                        {marginInput("bottom", "absolute bottom-2 left-1/2 -translate-x-1/2")}
                       </div>
                     )}
                   </div>
