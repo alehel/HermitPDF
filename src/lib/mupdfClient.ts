@@ -4,7 +4,7 @@ import { retrieveDoc } from "./pdfStore";
 import type { PageRef, PdfMetadata, ExtractedImage, ImagePosition, BatesConfig, CompressConfig, OutlineEntry } from "./types";
 import type { ImageProcessConfig } from "./imageResize";
 import type { ContrastConfig } from "./contrast";
-import type { HtmlLayoutOptions } from "./htmlToPdf";
+import type { ExactPdfLink, HtmlLayoutOptions } from "./htmlToPdf";
 
 let worker: Comlink.Remote<MupdfWorkerApi> | null = null;
 
@@ -461,4 +461,20 @@ export async function convertHtmlToPdf(
 ): Promise<{ bytes: Uint8Array; pageCount: number }> {
   const buf = new TextEncoder().encode(html).buffer as ArrayBuffer;
   return getWorker().convertHtmlToPdf(Comlink.transfer(buf, [buf]), options);
+}
+
+/** Assemble exact-mode page images into a PDF with link annotations. */
+export async function imagesToPdf(
+  pages: Uint8Array<ArrayBuffer>[],
+  options: HtmlLayoutOptions,
+  links: ExactPdfLink[]
+): Promise<{ bytes: Uint8Array; pageCount: number }> {
+  return getWorker().imagesToPdf(
+    Comlink.transfer(
+      pages,
+      pages.map((p) => p.buffer)
+    ),
+    options,
+    links
+  );
 }

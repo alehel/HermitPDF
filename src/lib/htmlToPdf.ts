@@ -54,8 +54,15 @@ export const MAX_ZOOM_PERCENT = 200;
  */
 const LAYOUT_EM_PT = 12;
 
+export type HtmlEngine = "document" | "exact";
+export const HTML_ENGINES: HtmlEngine[] = ["document", "exact"];
+
 /** Wizard-facing settings state. */
 export interface HtmlToPdfConfig {
+  /** "document": mupdf text PDF. "exact": browser-rendered image pages. */
+  engine: HtmlEngine;
+  /** Exact mode only: mm trimmed off the rendered page before placement. */
+  cropMm: { sides: number; top: number; bottom: number };
   pageSize: HtmlPageSizeKey;
   orientation: HtmlOrientation;
   margin: HtmlMarginSetting;
@@ -77,6 +84,8 @@ export interface HtmlToPdfConfig {
 }
 
 export const DEFAULT_HTML_TO_PDF_CONFIG: HtmlToPdfConfig = {
+  engine: "document",
+  cropMm: { sides: 0, top: 0, bottom: 0 },
   pageSize: "A4",
   orientation: "portrait",
   margin: "normal",
@@ -166,6 +175,21 @@ export function contentWidthCssPx(options: HtmlLayoutOptions): number {
       options.scale) *
       (96 / 72)
   );
+}
+
+/**
+ * A hyperlink annotation for an exact-mode (image) page, in PDF page space
+ * (points, y-down from the top-left). Internal links carry a resolved
+ * destination page/point instead of relying on document anchors.
+ */
+export interface ExactPdfLink {
+  pageIndex: number;
+  rect: [number, number, number, number];
+  uri: string;
+  external: boolean;
+  destPage?: number;
+  destX?: number;
+  destY?: number;
 }
 
 /** Derive a download filename from a page URL: last path segment, else host. */

@@ -17,7 +17,7 @@ import {
   type ImageProcessConfig,
 } from "@/lib/imageResize";
 import { applyContrastToPixels, type ContrastConfig } from "@/lib/contrast";
-import type { HtmlLayoutOptions } from "@/lib/htmlToPdf";
+import type { ExactPdfLink, HtmlLayoutOptions } from "@/lib/htmlToPdf";
 
 type PdfMetadata = {
   title?: string;
@@ -1974,6 +1974,77 @@ const api = {
     } finally {
       buffer.destroy();
       doc.destroy();
+    }
+  },
+
+  /**
+   * Assemble the exact-mode PDF: one pre-encoded image per page drawn into
+   * the content box, plus link annotations whose geometry was measured in
+   * the browser. Internal links carry resolved page/point destinations.
+   */
+  async imagesToPdf(
+    pages: Uint8Array[],
+    options: HtmlLayoutOptions,
+    links: ExactPdfLink[]
+  ): Promise<{ bytes: Uint8Array; pageCount: number }> {
+    const mupdf = await getMupdf();
+    const output = newOutputPdf(mupdf);
+    try {
+      if (options.title) output.setMetaData("info:Title", options.title);
+      const m = options.marginsPt;
+      const drawW = options.pageWidthPt - m.left - m.right;
+      const drawH = options.pageHeightPt - m.top - m.bottom;
+      for (const data of pages) {
+        const image = new mupdf.Image(data);
+        try {
+          // addImagePage's draw offsets are y-up PDF coordinates, so the
+          // vertical inset is the bottom margin.
+          addImagePage(
+            output,
+            image,
+            options.pageWidthPt,
+            options.pageHeightPt,
+            drawW,
+            drawH,
+            m.left,
+            m.bottom
+          );
+        } finally {
+          image.destroy();
+        }
+      }
+
+      if (options.keepLinks) {
+        for (const link of links) {
+          if (link.pageIndex < 0 || link.pageIndex >= pages.length) continue;
+          const page = output.loadPage(link.pageIndex);
+          try {
+            const uri =
+              link.external || link.destPage === undefined
+                ? link.uri
+                : output.formatLinkURI({
+                    type: "XYZ",
+                    chapter: 0,
+                    page: Math.min(link.destPage, pages.length - 1),
+                    x: link.destX ?? 0,
+                    y: link.destY ?? 0,
+                    width: 0,
+                    height: 0,
+                    zoom: 0,
+                  });
+            page.createLink(link.rect, uri);
+          } catch {
+            // One malformed link must not fail the whole export.
+          } finally {
+            page.destroy();
+          }
+        }
+      }
+
+      const bytes = saveToTransferableBytes(output, "compress");
+      return Comlink.transfer({ bytes, pageCount: pages.length }, [bytes.buffer]);
+    } finally {
+      output.destroy();
     }
   },
 };

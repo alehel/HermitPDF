@@ -124,7 +124,7 @@ export async function lowerHtmlForPdf(
  * empirically). So every non-data: resource reference is also stripped —
  * mupdf cannot fetch them either, so this changes nothing in the output.
  */
-function buildSrcdoc(html: string): string {
+export function buildSrcdoc(html: string): string {
   const parsed = new DOMParser().parseFromString(html, "text/html");
   for (const el of parsed.querySelectorAll("script, base, meta[http-equiv], link")) el.remove();
 
@@ -153,7 +153,7 @@ function buildSrcdoc(html: string): string {
   return "<!DOCTYPE html>\n" + parsed.documentElement.outerHTML;
 }
 
-async function settleImages(doc: Document): Promise<void> {
+export async function settleImages(doc: Document): Promise<void> {
   const pending = [...doc.images].filter((img) => !img.complete);
   if (pending.length === 0) return;
   const all = Promise.all(
@@ -179,7 +179,7 @@ async function settleImages(doc: Document): Promise<void> {
  * With `preferPrint`, media lists are evaluated the way a printing browser
  * would: print-typed queries match, screen-typed ones do not.
  */
-function hoistConditionalCss(
+export function hoistConditionalCss(
   doc: Document,
   win: Window & typeof globalThis,
   preferPrint: boolean
@@ -275,7 +275,7 @@ function mediaMatches(
  * remove it. Sticky elements stay: they occupy normal flow space and render
  * correctly as static.
  */
-function removeFixedElements(doc: Document, win: Window & typeof globalThis): number {
+export function removeFixedElements(doc: Document, win: Window & typeof globalThis): number {
   let removed = 0;
   for (const el of [...doc.body.querySelectorAll<HTMLElement>("*")]) {
     if (!el.isConnected || !(el instanceof win.HTMLElement)) continue;
@@ -391,7 +391,7 @@ const NON_STRETCH_TAGS = new Set([
  * without forcing a reflow per element. Returns the number of elements
  * changed.
  */
-function stripSideWhitespace(doc: Document, win: Window & typeof globalThis): number {
+export function stripSideWhitespace(doc: Document, win: Window & typeof globalThis): number {
   const MIN_SLACK_PX = 24;
   let total = 0;
   for (let round = 0; round < 3; round++) {

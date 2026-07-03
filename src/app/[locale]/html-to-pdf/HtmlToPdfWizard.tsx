@@ -15,6 +15,7 @@ import {
   contentWidthCssPx,
   DEFAULT_HTML_TO_PDF_CONFIG,
   HTML_ACCEPT,
+  HTML_ENGINES,
   HTML_MARGIN_SETTINGS,
   HTML_ORIENTATIONS,
   HTML_PAGE_SIZE_KEYS,
@@ -34,7 +35,8 @@ import {
 } from "@/lib/htmlToPdf";
 import { fetchHtmlPage, FetchPageError } from "@/lib/fetchHtmlPage";
 import { lowerHtmlForPdf, needsBrowserPass } from "@/lib/lowerHtml";
-import { convertHtmlToPdf, renderHtmlPreview } from "@/lib/mupdfClient";
+import { buildExactCapture, type ExactCapture } from "@/lib/exactRender";
+import { convertHtmlToPdf, imagesToPdf, renderHtmlPreview } from "@/lib/mupdfClient";
 import { downloadPdf } from "@/lib/pdfExport";
 import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 import { useDelayedFlag } from "@/hooks/useDelayedFlag";
@@ -115,6 +117,7 @@ export function HtmlToPdfWizard() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const previewBoxRef = useRef<HTMLDivElement>(null);
   const lowerCacheRef = useRef<{ key: string; out: string } | null>(null);
+  const exactCacheRef = useRef<{ key: string; capture: ExactCapture } | null>(null);
 
   // Unlike the PDF wizards there is no OPFS storage and no worker-side
   // document handle to release — the HTML lives only in React state and every
@@ -259,6 +262,37 @@ export function HtmlToPdfWizard() {
     []
   );
 
+  /* ---- Exact engine: browser-rendered capture, cached per input. ---- */
+  const getExactCapture = useCallback(
+    async (raw: string, options: HtmlLayoutOptions, cfg: HtmlToPdfConfig): Promise<ExactCapture> => {
+      const key = [
+        options.pageWidthPt,
+        options.pageHeightPt,
+        options.marginsPt.top,
+        options.marginsPt.right,
+        options.marginsPt.bottom,
+        options.marginsPt.left,
+        options.scale,
+        cfg.printStyles,
+        cfg.stripWhitespace,
+        cfg.cropMm.sides,
+        cfg.cropMm.top,
+        cfg.cropMm.bottom,
+        raw,
+      ].join("|");
+      const cache = exactCacheRef.current;
+      if (cache && cache.key === key) return cache.capture;
+      const capture = await buildExactCapture(raw, options, {
+        printStyles: cfg.printStyles,
+        fullWidth: cfg.stripWhitespace,
+        cropMm: cfg.cropMm,
+      });
+      exactCacheRef.current = { key, capture };
+      return capture;
+    },
+    []
+  );
+
   /* ---- Live preview: debounced re-layout + render of the current page.
      The monotonic request id drops superseded results (Strict Mode double
      mounts, or the user typing faster than the worker lays out). ---- */
@@ -276,20 +310,32 @@ export function HtmlToPdfWizard() {
         const cssWidth = previewBoxRef.current?.clientWidth ?? 600;
         const targetWidthPx = Math.min(1600, Math.round(cssWidth * dpr));
         const layoutOptions = resolveLayoutOptions(debouncedConfig);
-        const prepared = await prepareHtml(debouncedHtml, layoutOptions, debouncedConfig);
-        if (reqIdRef.current !== myReqId) return; // superseded during lowering
-        const result = await renderHtmlPreview(
-          prepared,
-          layoutOptions,
-          debouncedPreviewPage - 1,
-          targetWidthPx
-        );
+
+        let pageCountResult: number;
+        let imageDataResult: ImageData;
+        if (debouncedConfig.engine === "exact") {
+          const capture = await getExactCapture(debouncedHtml, layoutOptions, debouncedConfig);
+          if (reqIdRef.current !== myReqId) return; // superseded during capture
+          pageCountResult = capture.pageCount;
+          imageDataResult = capture.renderPage(debouncedPreviewPage - 1, targetWidthPx);
+        } else {
+          const prepared = await prepareHtml(debouncedHtml, layoutOptions, debouncedConfig);
+          if (reqIdRef.current !== myReqId) return; // superseded during lowering
+          const result = await renderHtmlPreview(
+            prepared,
+            layoutOptions,
+            debouncedPreviewPage - 1,
+            targetWidthPx
+          );
+          pageCountResult = result.pageCount;
+          imageDataResult = result.imageData;
+        }
         if (reqIdRef.current !== myReqId) return; // superseded
-        setPageCount(result.pageCount);
-        setPreviewImageData(result.imageData);
+        setPageCount(pageCountResult);
+        setPreviewImageData(imageDataResult);
         setPreviewFailed(false);
         // Re-layout can shrink the document below the current page.
-        if (debouncedPreviewPage > result.pageCount) setPreviewPage(result.pageCount);
+        if (debouncedPreviewPage > pageCountResult) setPreviewPage(pageCountResult);
       } catch {
         if (reqIdRef.current !== myReqId) return;
         setPreviewFailed(true);
@@ -299,7 +345,7 @@ export function HtmlToPdfWizard() {
         if (reqIdRef.current === myReqId) setIsPreviewLoading(false);
       }
     })();
-  }, [isEmpty, debouncedHtml, debouncedConfig, debouncedPreviewPage, prepareHtml]);
+  }, [isEmpty, debouncedHtml, debouncedConfig, debouncedPreviewPage, prepareHtml, getExactCapture]);
 
   /* ---- Paint preview to canvas ---- */
   useEffect(() => {
@@ -321,8 +367,16 @@ export function HtmlToPdfWizard() {
       const title = extractHtmlTitle(html);
       const baseUrl = source?.origin === "url" ? source.url : undefined;
       const layoutOptions = resolveLayoutOptions(config, title, baseUrl);
-      const prepared = await prepareHtml(html, layoutOptions, config);
-      const { bytes } = await convertHtmlToPdf(prepared, layoutOptions);
+      let bytes: Uint8Array;
+      if (config.engine === "exact") {
+        const capture = await getExactCapture(html, layoutOptions, config);
+        const pages = await capture.encodePages();
+        const links = config.keepLinks ? capture.links() : [];
+        ({ bytes } = await imagesToPdf(pages, layoutOptions, links));
+      } else {
+        const prepared = await prepareHtml(html, layoutOptions, config);
+        ({ bytes } = await convertHtmlToPdf(prepared, layoutOptions));
+      }
       const filename =
         source?.origin === "file"
           ? htmlPdfFilename(source.name)
@@ -335,7 +389,7 @@ export function HtmlToPdfWizard() {
     } finally {
       setIsExporting(false);
     }
-  }, [html, config, source, t, prepareHtml]);
+  }, [html, config, source, t, prepareHtml, getExactCapture]);
 
   const htmlByteSize = useMemo(() => (html ? new Blob([html]).size : 0), [html]);
 
@@ -536,6 +590,82 @@ export function HtmlToPdfWizard() {
                 </h3>
 
                 <div className="space-y-5 rounded-xl border border-border bg-card p-4">
+                  <div>
+                    <span className="mb-2 block text-sm font-medium text-foreground">
+                      {t("engine")}
+                    </span>
+                    <div className="flex gap-2 rounded-xl border border-border bg-card p-1">
+                      {HTML_ENGINES.map((engine) => (
+                        <button
+                          key={engine}
+                          type="button"
+                          onClick={() => setConfig((c) => ({ ...c, engine }))}
+                          className={`flex-1 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
+                            config.engine === engine
+                              ? "bg-primary text-primary-foreground"
+                              : "text-muted-foreground hover:bg-accent"
+                          }`}
+                        >
+                          <span className="block">
+                            {t(`engine_${engine}` as Parameters<typeof t>[0])}
+                          </span>
+                          <span className="block text-[10px] font-normal opacity-70">
+                            {t(`engine_${engine}Hint` as Parameters<typeof t>[0])}
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                    {config.engine === "exact" && (
+                      <p className="mt-2 text-xs text-muted-foreground">{t("exactNote")}</p>
+                    )}
+                  </div>
+
+                  {config.engine === "exact" && (
+                    <div>
+                      <div className="mb-2 flex items-center justify-between">
+                        <span className="text-sm font-medium text-foreground">{t("crop")}</span>
+                        <span className="text-xs text-muted-foreground">{t("marginsMmHint")}</span>
+                      </div>
+                      <div className="grid grid-cols-3 gap-3">
+                        {(["sides", "top", "bottom"] as const).map((side) => (
+                          <label key={side} className="block">
+                            <span className="mb-1 block text-xs font-medium text-muted-foreground">
+                              {t(`crop_${side}` as Parameters<typeof t>[0])}
+                            </span>
+                            <input
+                              type="number"
+                              min={0}
+                              max={MAX_MARGIN_MM}
+                              step={1}
+                              value={config.cropMm[side]}
+                              onChange={(e) => {
+                                const v = e.target.valueAsNumber;
+                                if (isNaN(v)) return;
+                                setConfig((c) => ({
+                                  ...c,
+                                  cropMm: { ...c.cropMm, [side]: v },
+                                }));
+                              }}
+                              onBlur={(e) => {
+                                const v = parseFloat(e.target.value);
+                                const clamped = Math.min(
+                                  MAX_MARGIN_MM,
+                                  Math.max(0, isNaN(v) ? 0 : v)
+                                );
+                                setConfig((c) => ({
+                                  ...c,
+                                  cropMm: { ...c.cropMm, [side]: clamped },
+                                }));
+                              }}
+                              className="w-full rounded-lg border border-border bg-background px-2 py-1 text-sm text-foreground focus:border-primary focus:outline-none"
+                            />
+                          </label>
+                        ))}
+                      </div>
+                      <p className="mt-2 text-xs text-muted-foreground">{t("cropHint")}</p>
+                    </div>
+                  )}
+
                   <label className="block">
                     <span className="mb-2 block text-sm font-medium text-foreground">
                       {t("pageSize")}
@@ -679,31 +809,37 @@ export function HtmlToPdfWizard() {
                     </div>
                   </label>
 
-                  <div className="h-px bg-border" />
+                  {config.engine === "document" && (
+                    <>
+                      <div className="h-px bg-border" />
 
-                  <label className="flex items-center gap-3">
-                    <button
-                      type="button"
-                      role="switch"
-                      aria-checked={config.adaptLayout}
-                      onClick={() => setConfig((c) => ({ ...c, adaptLayout: !c.adaptLayout }))}
-                      className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors ${
-                        config.adaptLayout ? "bg-primary" : "bg-border"
-                      }`}
-                    >
-                      <span
-                        className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform ${
-                          config.adaptLayout ? "translate-x-4" : "translate-x-0.5"
-                        }`}
-                      />
-                    </button>
-                    <div>
-                      <span className="text-sm font-medium text-foreground">
-                        {t("adaptLayout")}
-                      </span>
-                      <p className="text-xs text-muted-foreground">{t("adaptLayoutDesc")}</p>
-                    </div>
-                  </label>
+                      <label className="flex items-center gap-3">
+                        <button
+                          type="button"
+                          role="switch"
+                          aria-checked={config.adaptLayout}
+                          onClick={() =>
+                            setConfig((c) => ({ ...c, adaptLayout: !c.adaptLayout }))
+                          }
+                          className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors ${
+                            config.adaptLayout ? "bg-primary" : "bg-border"
+                          }`}
+                        >
+                          <span
+                            className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform ${
+                              config.adaptLayout ? "translate-x-4" : "translate-x-0.5"
+                            }`}
+                          />
+                        </button>
+                        <div>
+                          <span className="text-sm font-medium text-foreground">
+                            {t("adaptLayout")}
+                          </span>
+                          <p className="text-xs text-muted-foreground">{t("adaptLayoutDesc")}</p>
+                        </div>
+                      </label>
+                    </>
+                  )}
 
                   <div className="h-px bg-border" />
 
