@@ -45,9 +45,18 @@ export interface HtmlLayoutOptions {
   keepLinks: boolean;
   /** PDF info:Title, extracted from the HTML <title> on the main thread. */
   title?: string;
+  /**
+   * Address the HTML was fetched from, when it came from a URL. Relative
+   * hrefs in the page are resolved against it so they stay clickable.
+   */
+  baseUrl?: string;
 }
 
-export function resolveLayoutOptions(config: HtmlToPdfConfig, title?: string): HtmlLayoutOptions {
+export function resolveLayoutOptions(
+  config: HtmlToPdfConfig,
+  title?: string,
+  baseUrl?: string
+): HtmlLayoutOptions {
   const { shortPt, longPt } = pageSizeInPoints(config.pageSize);
   const portrait = config.orientation === "portrait";
   return {
@@ -59,12 +68,25 @@ export function resolveLayoutOptions(config: HtmlToPdfConfig, title?: string): H
     emSize: config.emSize,
     keepLinks: config.keepLinks,
     title,
+    baseUrl,
   };
 }
 
 export function htmlPdfFilename(stem: string | null): string {
   if (!stem) return "document.pdf";
   return stem.replace(HTML_FILENAME_RE, "") + ".pdf";
+}
+
+/** Derive a download filename from a page URL: last path segment, else host. */
+export function urlPdfFilename(pageUrl: string): string {
+  try {
+    const url = new URL(pageUrl);
+    const segment = url.pathname.split("/").filter(Boolean).pop() ?? "";
+    const stem = segment.replace(/\.[a-z0-9]+$/i, "");
+    return `${stem || url.hostname || "page"}.pdf`;
+  } catch {
+    return "page.pdf";
+  }
 }
 
 export const MAX_HTML_BYTES = 25 * 1024 * 1024;

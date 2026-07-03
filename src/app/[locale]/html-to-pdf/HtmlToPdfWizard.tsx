@@ -23,9 +23,11 @@ import {
   htmlPdfFilename,
   isHtmlFile,
   resolveLayoutOptions,
+  urlPdfFilename,
   type HtmlPageSizeKey,
   type HtmlToPdfConfig,
 } from "@/lib/htmlToPdf";
+import { fetchHtmlPage, FetchPageError } from "@/lib/fetchHtmlPage";
 import { convertHtmlToPdf, renderHtmlPreview } from "@/lib/mupdfClient";
 import { downloadPdf } from "@/lib/pdfExport";
 import { useDebouncedValue } from "@/hooks/useDebouncedValue";
@@ -33,11 +35,12 @@ import { useDelayedFlag } from "@/hooks/useDelayedFlag";
 import { useDropZone } from "@/hooks/useDropZone";
 import { useFileInput } from "@/hooks/useFileInput";
 
-type InputMode = "upload" | "paste";
+type InputMode = "upload" | "paste" | "url";
 
 type HtmlSource =
   | { origin: "file"; name: string; html: string } // html frozen at ingest
-  | { origin: "paste" }; // live html lives in pasteText so it stays editable
+  | { origin: "paste" } // live html lives in pasteText so it stays editable
+  | { origin: "url"; url: string; html: string }; // url = final address after redirects
 
 /**
  * Extract the document <title> for the PDF metadata. DOMParser is inert — it
@@ -53,11 +56,43 @@ function extractHtmlTitle(html: string): string | undefined {
   }
 }
 
+/**
+ * Rewrite every href in a fetched page to an absolute URL before conversion.
+ * mupdf's HTML parser normalizes leading slashes away ("/about" → "about",
+ * "//cdn.x/y" → "cdn.x/y"), which loses the information needed to resolve
+ * root- and protocol-relative links correctly afterwards — so resolve them
+ * up front while the original strings are still intact. Fragment-only hrefs
+ * are kept as-is so in-page anchors stay internal GoTo destinations. Uses
+ * the same inert DOMParser as extractHtmlTitle; nothing enters the app DOM.
+ */
+function absolutizeHtmlLinks(html: string, baseUrl: string): string {
+  try {
+    const parsed = new DOMParser().parseFromString(html, "text/html");
+    for (const anchor of parsed.querySelectorAll("a[href], area[href]")) {
+      const href = anchor.getAttribute("href");
+      if (!href || href.startsWith("#")) continue;
+      try {
+        anchor.setAttribute("href", new URL(href, baseUrl).href);
+      } catch {
+        // unresolvable href — leave untouched
+      }
+    }
+    return "<!DOCTYPE html>\n" + parsed.documentElement.outerHTML;
+  } catch {
+    // Fall back to the raw page; the worker still best-effort-resolves
+    // relative links against options.baseUrl.
+    return html;
+  }
+}
+
 export function HtmlToPdfWizard() {
   const t = useTranslations("htmlToPdfWizard");
 
   const [inputMode, setInputMode] = useState<InputMode>("upload");
   const [pasteText, setPasteText] = useState("");
+  const [urlText, setUrlText] = useState("");
+  const [urlError, setUrlError] = useState<{ message: string; tip?: string } | null>(null);
+  const [isFetching, setIsFetching] = useState(false);
   const [source, setSource] = useState<HtmlSource | null>(null);
   const [config, setConfig] = useState<HtmlToPdfConfig>(DEFAULT_HTML_TO_PDF_CONFIG);
   const [banner, setBanner] = useState<string | null>(null);
@@ -78,7 +113,7 @@ export function HtmlToPdfWizard() {
   // document handle to release — the HTML lives only in React state and every
   // worker call is stateless — so no ingestion hooks or cleanup effects.
   const html =
-    source?.origin === "file" ? source.html : source?.origin === "paste" ? pasteText : "";
+    source == null ? "" : source.origin === "paste" ? pasteText : source.html;
   const isEmpty = source === null;
 
   const debouncedHtml = useDebouncedValue(html);
@@ -131,6 +166,51 @@ export function HtmlToPdfWizard() {
     setPageCount(null);
     setPreviewFailed(false);
   }, [pasteText, t]);
+
+  const handleFetchUrl = useCallback(async () => {
+    if (!urlText.trim() || isFetching) return;
+    setIsFetching(true);
+    setUrlError(null);
+    try {
+      const { html: fetched, finalUrl } = await fetchHtmlPage(urlText);
+      setSource({ origin: "url", url: finalUrl, html: absolutizeHtmlLinks(fetched, finalUrl) });
+      setPreviewPage(1);
+      setPageCount(null);
+      setPreviewFailed(false);
+    } catch (e) {
+      const err = e instanceof FetchPageError ? e : null;
+      switch (err?.kind) {
+        case "invalid":
+          setUrlError({ message: t("urlErrorInvalid") });
+          break;
+        case "insecure":
+          setUrlError({ message: t("urlErrorInsecure") });
+          break;
+        case "cors":
+          setUrlError({
+            message: t("urlErrorCors", { host: err.detail.host ?? "" }),
+            tip: t("urlErrorCorsTip"),
+          });
+          break;
+        case "unreachable":
+          setUrlError({ message: t("urlErrorUnreachable", { host: err.detail.host ?? "" }) });
+          break;
+        case "http":
+          setUrlError({ message: t("urlErrorHttp", { status: err.detail.status ?? 0 }) });
+          break;
+        case "notHtml":
+          setUrlError({ message: t("urlErrorNotHtml", { type: err.detail.type ?? "" }) });
+          break;
+        case "oversized":
+          setUrlError({ message: t("urlErrorOversized") });
+          break;
+        default:
+          setUrlError({ message: t("urlErrorGeneric") });
+      }
+    } finally {
+      setIsFetching(false);
+    }
+  }, [urlText, isFetching, t]);
 
   // Keep pasteText on remove so the user can tweak the markup and re-preview.
   const handleRemove = useCallback(() => {
@@ -198,8 +278,15 @@ export function HtmlToPdfWizard() {
     setIsExporting(true);
     try {
       const title = extractHtmlTitle(html);
-      const { bytes } = await convertHtmlToPdf(html, resolveLayoutOptions(config, title));
-      downloadPdf(bytes, htmlPdfFilename(source?.origin === "file" ? source.name : null));
+      const baseUrl = source?.origin === "url" ? source.url : undefined;
+      const { bytes } = await convertHtmlToPdf(html, resolveLayoutOptions(config, title, baseUrl));
+      const filename =
+        source?.origin === "file"
+          ? htmlPdfFilename(source.name)
+          : source?.origin === "url"
+            ? urlPdfFilename(source.url)
+            : htmlPdfFilename(null);
+      downloadPdf(bytes, filename);
     } catch {
       setBanner(t("conversionFailed"));
     } finally {
@@ -265,6 +352,7 @@ export function HtmlToPdfWizard() {
             <TabsList className="w-full">
               <TabsTrigger value="upload">{t("uploadTab")}</TabsTrigger>
               <TabsTrigger value="paste">{t("pasteTab")}</TabsTrigger>
+              <TabsTrigger value="url">{t("urlTab")}</TabsTrigger>
             </TabsList>
 
             <TabsContent value="upload">
@@ -296,6 +384,46 @@ export function HtmlToPdfWizard() {
                 <p className="text-sm text-muted-foreground">{t("privacyNote")}</p>
               </div>
             </TabsContent>
+
+            <TabsContent value="url">
+              <form
+                className="flex flex-col gap-3"
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  void handleFetchUrl();
+                }}
+              >
+                <input
+                  type="text"
+                  inputMode="url"
+                  value={urlText}
+                  onChange={(e) => {
+                    setUrlText(e.target.value);
+                    setUrlError(null);
+                  }}
+                  spellCheck={false}
+                  placeholder={t("urlPlaceholder")}
+                  aria-label={t("urlLabel")}
+                  className="w-full rounded-xl border border-border bg-background p-3 text-sm text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none"
+                />
+                {urlError && (
+                  <div role="alert" className="rounded-xl bg-accent px-4 py-3">
+                    <p className="text-xs text-foreground">{urlError.message}</p>
+                    {urlError.tip && (
+                      <p className="mt-2 text-xs font-medium text-primary">{urlError.tip}</p>
+                    )}
+                  </div>
+                )}
+                <button
+                  type="submit"
+                  disabled={!urlText.trim() || isFetching}
+                  className="self-start rounded-xl bg-primary px-6 py-3 font-medium text-primary-foreground transition-all hover:shadow-lg disabled:opacity-60"
+                >
+                  {isFetching ? t("fetchingUrl") : t("fetchUrl")}
+                </button>
+                <p className="text-sm text-muted-foreground">{t("urlPrivacyNote")}</p>
+              </form>
+            </TabsContent>
           </Tabs>
         ) : (
           <div className="grid grid-cols-1 gap-8 lg:grid-cols-2 lg:items-start">
@@ -305,7 +433,13 @@ export function HtmlToPdfWizard() {
                   {t("file")}
                 </h3>
                 <FileCard
-                  name={source.origin === "file" ? source.name : t("pastedHtml")}
+                  name={
+                    source.origin === "file"
+                      ? source.name
+                      : source.origin === "url"
+                        ? source.url
+                        : t("pastedHtml")
+                  }
                   subtitle={formatSize(htmlByteSize)}
                   onRemove={handleRemove}
                   removeTitle={t("remove")}

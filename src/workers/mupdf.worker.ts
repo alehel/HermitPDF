@@ -1865,18 +1865,33 @@ const api = {
           try {
             if (options.keepLinks) {
               for (const link of page.getLinks()) {
-                const uri = link.getURI();
+                let uri = link.getURI();
                 if (!uri) continue;
-                const external = link.isExternal();
-                links.push({
-                  pageIndex: i,
-                  bounds: link.getBounds(),
-                  uri,
-                  external,
-                  // Output pages map 1:1 onto laid-out pages, so a destination
-                  // resolved now stays valid in the output by page index.
-                  dest: external ? undefined : doc.resolveLinkDestination(link),
-                });
+                let external = link.isExternal();
+                // Pages fetched from a URL carry relative hrefs ("/about",
+                // "next.html"); resolve them against the source address so
+                // they stay clickable. Bare-fragment anchors stay internal.
+                if (!external && options.baseUrl && !uri.startsWith("#")) {
+                  try {
+                    uri = new URL(uri, options.baseUrl).href;
+                    external = true;
+                  } catch {
+                    // not resolvable — fall through to the internal path
+                  }
+                }
+                // Output pages map 1:1 onto laid-out pages, so a destination
+                // resolved now stays valid in the output by page index. A
+                // relative href with no matching anchor can make resolution
+                // throw — skip that link rather than failing the export.
+                let dest: ReturnType<MupdfDocument["resolveLinkDestination"]> | undefined;
+                if (!external) {
+                  try {
+                    dest = doc.resolveLinkDestination(link);
+                  } catch {
+                    continue;
+                  }
+                }
+                links.push({ pageIndex: i, bounds: link.getBounds(), uri, external, dest });
               }
             }
             const device = writer.beginPage(mediabox);
