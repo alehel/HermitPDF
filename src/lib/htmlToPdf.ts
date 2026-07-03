@@ -70,6 +70,8 @@ export interface HtmlToPdfConfig {
   keepLinks: boolean;
   /** Rewrite flex/grid layouts with the browser engine before converting. */
   adaptLayout: boolean;
+  /** Expand centered content columns to the full page width. */
+  stripWhitespace: boolean;
 }
 
 export const DEFAULT_HTML_TO_PDF_CONFIG: HtmlToPdfConfig = {
@@ -80,6 +82,7 @@ export const DEFAULT_HTML_TO_PDF_CONFIG: HtmlToPdfConfig = {
   zoom: 100,
   keepLinks: true,
   adaptLayout: true,
+  stripWhitespace: false,
 };
 
 /** Per-side margins in points, crossing the worker boundary. */

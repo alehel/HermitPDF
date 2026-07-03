@@ -114,7 +114,7 @@ export function HtmlToPdfWizard() {
   const reqIdRef = useRef(0);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const previewBoxRef = useRef<HTMLDivElement>(null);
-  const lowerCacheRef = useRef<{ html: string; width: number; out: string } | null>(null);
+  const lowerCacheRef = useRef<{ key: string; out: string } | null>(null);
 
   // Unlike the PDF wizards there is no OPFS storage and no worker-side
   // document handle to release — the HTML lives only in React state and every
@@ -233,14 +233,23 @@ export function HtmlToPdfWizard() {
      changes the browser's wrap points); any failure falls back to the raw
      HTML so conversion never breaks on it. ---- */
   const prepareHtml = useCallback(
-    async (raw: string, options: HtmlLayoutOptions, adapt: boolean): Promise<string> => {
-      if (!adapt || !mightNeedLowering(raw)) return raw;
+    async (
+      raw: string,
+      options: HtmlLayoutOptions,
+      cfg: Pick<HtmlToPdfConfig, "adaptLayout" | "stripWhitespace">
+    ): Promise<string> => {
+      const adapt = cfg.adaptLayout && mightNeedLowering(raw);
+      if (!adapt && !cfg.stripWhitespace) return raw;
       const width = contentWidthCssPx(options);
+      const key = `${width}|${adapt}|${cfg.stripWhitespace}|${raw}`;
       const cache = lowerCacheRef.current;
-      if (cache && cache.html === raw && cache.width === width) return cache.out;
+      if (cache && cache.key === key) return cache.out;
       try {
-        const out = await lowerHtmlForPdf(raw, width);
-        lowerCacheRef.current = { html: raw, width, out };
+        const out = await lowerHtmlForPdf(raw, width, {
+          adaptLayout: adapt,
+          fullWidth: cfg.stripWhitespace,
+        });
+        lowerCacheRef.current = { key, out };
         return out;
       } catch {
         return raw;
@@ -266,11 +275,7 @@ export function HtmlToPdfWizard() {
         const cssWidth = previewBoxRef.current?.clientWidth ?? 600;
         const targetWidthPx = Math.min(1600, Math.round(cssWidth * dpr));
         const layoutOptions = resolveLayoutOptions(debouncedConfig);
-        const prepared = await prepareHtml(
-          debouncedHtml,
-          layoutOptions,
-          debouncedConfig.adaptLayout
-        );
+        const prepared = await prepareHtml(debouncedHtml, layoutOptions, debouncedConfig);
         if (reqIdRef.current !== myReqId) return; // superseded during lowering
         const result = await renderHtmlPreview(
           prepared,
@@ -315,7 +320,7 @@ export function HtmlToPdfWizard() {
       const title = extractHtmlTitle(html);
       const baseUrl = source?.origin === "url" ? source.url : undefined;
       const layoutOptions = resolveLayoutOptions(config, title, baseUrl);
-      const prepared = await prepareHtml(html, layoutOptions, config.adaptLayout);
+      const prepared = await prepareHtml(html, layoutOptions, config);
       const { bytes } = await convertHtmlToPdf(prepared, layoutOptions);
       const filename =
         source?.origin === "file"
@@ -696,6 +701,34 @@ export function HtmlToPdfWizard() {
                         {t("adaptLayout")}
                       </span>
                       <p className="text-xs text-muted-foreground">{t("adaptLayoutDesc")}</p>
+                    </div>
+                  </label>
+
+                  <div className="h-px bg-border" />
+
+                  <label className="flex items-center gap-3">
+                    <button
+                      type="button"
+                      role="switch"
+                      aria-checked={config.stripWhitespace}
+                      onClick={() =>
+                        setConfig((c) => ({ ...c, stripWhitespace: !c.stripWhitespace }))
+                      }
+                      className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors ${
+                        config.stripWhitespace ? "bg-primary" : "bg-border"
+                      }`}
+                    >
+                      <span
+                        className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform ${
+                          config.stripWhitespace ? "translate-x-4" : "translate-x-0.5"
+                        }`}
+                      />
+                    </button>
+                    <div>
+                      <span className="text-sm font-medium text-foreground">
+                        {t("stripWhitespace")}
+                      </span>
+                      <p className="text-xs text-muted-foreground">{t("stripWhitespaceDesc")}</p>
                     </div>
                   </label>
                 </div>

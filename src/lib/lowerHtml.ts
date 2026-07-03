@@ -23,7 +23,18 @@ export function mightNeedLowering(html: string): boolean {
   return /display\s*:\s*(inline-)?(flex|grid)/i.test(html);
 }
 
-export async function lowerHtmlForPdf(html: string, contentWidthPx: number): Promise<string> {
+export interface LoweringOptions {
+  /** Rewrite flex/grid rows into tables. */
+  adaptLayout: boolean;
+  /** Expand width-constrained centered columns to the full content width. */
+  fullWidth: boolean;
+}
+
+export async function lowerHtmlForPdf(
+  html: string,
+  contentWidthPx: number,
+  opts: LoweringOptions
+): Promise<string> {
   const iframe = document.createElement("iframe");
   try {
     // allow-same-origin (and nothing else) lets us read the layout while
@@ -50,9 +61,16 @@ export async function lowerHtmlForPdf(html: string, contentWidthPx: number): Pro
     // data: images decode asynchronously and can affect layout.
     await settleImages(doc);
 
-    const plans = collectFlexGridPlans(doc, win);
-    const centered = collectCenteringFixes(doc, win);
-    if (plans.length === 0 && centered.length === 0) return html;
+    // Widen first: flex/grid rows are measured after the columns expand, so
+    // both passes see the same final geometry.
+    const widened = opts.fullWidth ? stripSideWhitespace(doc, win) : 0;
+
+    const plans = opts.adaptLayout ? collectFlexGridPlans(doc, win) : [];
+    // Preserving author centering makes no sense when the user asked for the
+    // side space to be stripped.
+    const centered =
+      opts.adaptLayout && !opts.fullWidth ? collectCenteringFixes(doc, win) : [];
+    if (plans.length === 0 && centered.length === 0 && widened === 0) return html;
 
     for (const plan of plans) applyFlexGridPlan(doc, plan);
     for (const fix of centered) {
@@ -119,6 +137,95 @@ async function settleImages(doc: Document): Promise<void> {
     )
   );
   await Promise.race([all, new Promise<void>((r) => setTimeout(r, IMAGE_SETTLE_MS))]);
+}
+
+// Replaced/self-sized elements that must never be stretched to full width.
+const NON_STRETCH_TAGS = new Set([
+  "IMG",
+  "VIDEO",
+  "AUDIO",
+  "SVG",
+  "CANVAS",
+  "IFRAME",
+  "OBJECT",
+  "EMBED",
+  "INPUT",
+  "SELECT",
+  "TEXTAREA",
+  "BUTTON",
+  "TABLE",
+  "HR",
+]);
+
+/**
+ * Expand width-constrained content columns to the full available width —
+ * the "centered div with empty colored bands on both sides" pattern. A
+ * normal-flow block with `width: auto` always fills its parent, so any
+ * block sitting with meaningful side slack is constrained by width,
+ * max-width, or gutter margins; all three are neutralized. Oversized
+ * horizontal paddings (percentage gutters) are clamped separately.
+ *
+ * Runs up to three read-then-write rounds so nested wrappers unwind
+ * without forcing a reflow per element. Returns the number of elements
+ * changed.
+ */
+function stripSideWhitespace(doc: Document, win: Window & typeof globalThis): number {
+  const MIN_SLACK_PX = 24;
+  let total = 0;
+  for (let round = 0; round < 3; round++) {
+    const writes: (() => void)[] = [];
+    for (const el of [doc.body, ...doc.body.querySelectorAll<HTMLElement>("*")]) {
+      if (!(el instanceof win.HTMLElement) || NON_STRETCH_TAGS.has(el.tagName)) continue;
+      const cs = win.getComputedStyle(el);
+      if (
+        (cs.display !== "block" && cs.display !== "flow-root" && cs.display !== "flex" && cs.display !== "grid") ||
+        cs.position === "absolute" ||
+        cs.position === "fixed" ||
+        cs.cssFloat !== "none"
+      ) {
+        continue;
+      }
+      const parent = el.parentElement;
+      if (!parent) continue;
+      const pcs = win.getComputedStyle(parent);
+      // Flex/grid items are sized by their container — the layout pass owns
+      // those; stretching individual items would destroy the rows.
+      if (/^(inline-)?(flex|grid)$/.test(pcs.display)) continue;
+
+      const rect = el.getBoundingClientRect();
+      const prect = parent.getBoundingClientRect();
+      const parentContentWidth =
+        prect.width -
+        parsePx(pcs.paddingLeft) -
+        parsePx(pcs.paddingRight) -
+        parsePx(pcs.borderLeftWidth) -
+        parsePx(pcs.borderRightWidth);
+
+      if (parentContentWidth - rect.width > MIN_SLACK_PX && rect.width > 0) {
+        writes.push(() => {
+          el.style.setProperty("max-width", "none", "important");
+          el.style.setProperty("width", "auto", "important");
+          el.style.setProperty("margin-left", "0", "important");
+          el.style.setProperty("margin-right", "0", "important");
+        });
+        continue;
+      }
+
+      // Percentage-style gutters: a full-width wrapper whose horizontal
+      // padding eats a large share of it.
+      const padX = parsePx(cs.paddingLeft) + parsePx(cs.paddingRight);
+      if (rect.width > 0 && padX > rect.width * 0.25) {
+        writes.push(() => {
+          el.style.setProperty("padding-left", "12pt", "important");
+          el.style.setProperty("padding-right", "12pt", "important");
+        });
+      }
+    }
+    if (writes.length === 0) break;
+    for (const write of writes) write();
+    total += writes.length;
+  }
+  return total;
 }
 
 interface RowItem {

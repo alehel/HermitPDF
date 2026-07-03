@@ -510,6 +510,8 @@
     "keepLinksDesc": "Preserve web links and in-page anchors as clickable PDF links.",
     "adaptLayout": "Adapt modern layouts",
     "adaptLayoutDesc": "Uses your browser's layout engine to rewrite flexbox and grid into structures the converter renders faithfully. Runs entirely on this device.",
+    "stripWhitespace": "Strip side whitespace",
+    "stripWhitespaceDesc": "Expands centered content columns to the full page width, removing the empty bands many sites leave on both sides.",
     "localNote": "Conversion runs entirely in your browser. Remote images, stylesheets, and scripts are never fetched or executed — embedded (data:) images work. Complex modern CSS may render simplified; the preview shows exactly what you will get.",
     "preview": "Preview",
     "previewPage": "Page",
