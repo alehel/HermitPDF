@@ -363,6 +363,35 @@ export function ContrastIcon(props: IconProps) {
   );
 }
 
+export function HtmlIcon(props: IconProps) {
+  return (
+    <Icon size={32} {...props}>
+      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+      <polyline points="14 2 14 8 20 8" />
+      <polyline points="10 12 8 14.5 10 17" />
+      <polyline points="14 12 16 14.5 14 17" />
+    </Icon>
+  );
+}
+
+export function HtmlFilePlusIcon(props: IconProps) {
+  return (
+    <Icon size={72} strokeWidth={1.2} viewBox="0 0 28 28" {...props}>
+      {/* Document shape with folded corner */}
+      <path d="M15 2H6a2 2 0 0 0-2 2v20a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V9Z" />
+      <polyline points="15 2 15 9 22 9" />
+      {/* Code brackets centered on document */}
+      <polyline points="11.5 13 9 16 11.5 19" />
+      <polyline points="16.5 13 19 16 16.5 19" />
+      {/* Plus badge in lower-right — background circle to mask document border */}
+      <circle cx="23" cy="23" r="5.5" fill="var(--background, #fff)" stroke="none" />
+      <circle cx="23" cy="23" r="4.5" fill="currentColor" stroke="none" />
+      <line x1="23" y1="20.8" x2="23" y2="25.2" stroke="var(--background, #fff)" strokeWidth="1.5" />
+      <line x1="20.8" y1="23" x2="25.2" y2="23" stroke="var(--background, #fff)" strokeWidth="1.5" />
+    </Icon>
+  );
+}
+
 export function PlusCircleIcon(props: IconProps) {
   return (
     <Icon size={16} strokeWidth={2} {...props}>

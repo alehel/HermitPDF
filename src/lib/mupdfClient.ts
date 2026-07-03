@@ -4,6 +4,7 @@ import { retrieveDoc } from "./pdfStore";
 import type { PageRef, PdfMetadata, ExtractedImage, ImagePosition, BatesConfig, CompressConfig, OutlineEntry } from "./types";
 import type { ImageProcessConfig } from "./imageResize";
 import type { ContrastConfig } from "./contrast";
+import type { HtmlLayoutOptions } from "./htmlToPdf";
 
 let worker: Comlink.Remote<MupdfWorkerApi> | null = null;
 
@@ -430,4 +431,34 @@ export async function mergePdfs(
   } finally {
     unpin();
   }
+}
+
+// HTML → PDF conversion. Both calls are stateless — the worker opens and
+// destroys the HTML document per call, nothing enters the handle LRU — so
+// there is no docId to track. The HTML string stays the main thread's source
+// of truth; each call encodes a fresh buffer because transferring detaches it.
+
+/** Lay out HTML and render one page (content + margins) for the live preview. */
+export async function renderHtmlPreview(
+  html: string,
+  options: HtmlLayoutOptions,
+  pageIndex: number,
+  targetWidthPx: number
+): Promise<{ pageCount: number; imageData: ImageData }> {
+  const buf = new TextEncoder().encode(html).buffer as ArrayBuffer;
+  return getWorker().renderHtmlPreview(
+    Comlink.transfer(buf, [buf]),
+    options,
+    pageIndex,
+    targetWidthPx
+  );
+}
+
+/** Convert HTML to a text-based PDF, keeping hyperlinks when configured. */
+export async function convertHtmlToPdf(
+  html: string,
+  options: HtmlLayoutOptions
+): Promise<{ bytes: Uint8Array; pageCount: number }> {
+  const buf = new TextEncoder().encode(html).buffer as ArrayBuffer;
+  return getWorker().convertHtmlToPdf(Comlink.transfer(buf, [buf]), options);
 }

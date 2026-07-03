@@ -1,0 +1,503 @@
+"use client";
+
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useTranslations } from "next-intl";
+import { HtmlIcon, HtmlFilePlusIcon } from "@/components/Icons";
+import { DropZone } from "@/components/DropZone";
+import { ProcessingOverlay } from "@/components/ProcessingOverlay";
+import { DismissibleBanner } from "@/components/DismissibleBanner";
+import { WizardContainer } from "@/components/WizardContainer";
+import { FileCard } from "@/components/FileCard";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { formatSize } from "@/lib/formatSize";
+import { checkerboardStyle } from "@/lib/utils";
+import {
+  DEFAULT_HTML_TO_PDF_CONFIG,
+  HTML_ACCEPT,
+  HTML_MARGIN_PRESETS,
+  HTML_ORIENTATIONS,
+  HTML_PAGE_SIZE_KEYS,
+  MAX_EM_SIZE,
+  MAX_HTML_BYTES,
+  MIN_EM_SIZE,
+  htmlPdfFilename,
+  isHtmlFile,
+  resolveLayoutOptions,
+  type HtmlPageSizeKey,
+  type HtmlToPdfConfig,
+} from "@/lib/htmlToPdf";
+import { convertHtmlToPdf, renderHtmlPreview } from "@/lib/mupdfClient";
+import { downloadPdf } from "@/lib/pdfExport";
+import { useDebouncedValue } from "@/hooks/useDebouncedValue";
+import { useDelayedFlag } from "@/hooks/useDelayedFlag";
+import { useDropZone } from "@/hooks/useDropZone";
+import { useFileInput } from "@/hooks/useFileInput";
+
+type InputMode = "upload" | "paste";
+
+type HtmlSource =
+  | { origin: "file"; name: string; html: string } // html frozen at ingest
+  | { origin: "paste" }; // live html lives in pasteText so it stays editable
+
+/**
+ * Extract the document <title> for the PDF metadata. DOMParser is inert — it
+ * never executes scripts or fetches subresources — and the parsed tree is
+ * discarded immediately; user HTML is never inserted into the app's DOM.
+ */
+function extractHtmlTitle(html: string): string | undefined {
+  try {
+    const title = new DOMParser().parseFromString(html, "text/html").title.trim();
+    return title || undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+export function HtmlToPdfWizard() {
+  const t = useTranslations("htmlToPdfWizard");
+
+  const [inputMode, setInputMode] = useState<InputMode>("upload");
+  const [pasteText, setPasteText] = useState("");
+  const [source, setSource] = useState<HtmlSource | null>(null);
+  const [config, setConfig] = useState<HtmlToPdfConfig>(DEFAULT_HTML_TO_PDF_CONFIG);
+  const [banner, setBanner] = useState<string | null>(null);
+
+  const [previewPage, setPreviewPage] = useState(1);
+  const [pageCount, setPageCount] = useState<number | null>(null);
+  const [previewImageData, setPreviewImageData] = useState<ImageData | null>(null);
+  const [isPreviewLoading, setIsPreviewLoading] = useState(false);
+  const [previewFailed, setPreviewFailed] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
+  const showOverlay = useDelayedFlag(isExporting);
+
+  const reqIdRef = useRef(0);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const previewBoxRef = useRef<HTMLDivElement>(null);
+
+  // Unlike the PDF wizards there is no OPFS storage and no worker-side
+  // document handle to release — the HTML lives only in React state and every
+  // worker call is stateless — so no ingestion hooks or cleanup effects.
+  const html =
+    source?.origin === "file" ? source.html : source?.origin === "paste" ? pasteText : "";
+  const isEmpty = source === null;
+
+  const debouncedHtml = useDebouncedValue(html);
+  const debouncedConfig = useDebouncedValue(config);
+  const debouncedPreviewPage = useDebouncedValue(previewPage);
+
+  /* ---- Input handling ---- */
+  const handleFilesAdded = useCallback(
+    async (fileList: FileList) => {
+      const file = fileList[0];
+      if (!isHtmlFile(file)) {
+        setBanner(t("rejectedFile", { file: file.name }));
+        return;
+      }
+      if (file.size > MAX_HTML_BYTES) {
+        setBanner(t("oversizedFile", { file: file.name }));
+        return;
+      }
+      let text: string;
+      try {
+        text = await file.text();
+      } catch {
+        setBanner(t("readFailed"));
+        return;
+      }
+      setSource({ origin: "file", name: file.name, html: text });
+      setPreviewPage(1);
+      setPageCount(null);
+      setPreviewFailed(false);
+      setBanner(fileList.length > 1 ? t("onlyOneFile") : null);
+    },
+    [t]
+  );
+
+  const { isDragOver, handleDropZoneDragOver, handleDropZoneDragLeave, handleDropZoneDrop } =
+    useDropZone(handleFilesAdded);
+  const { fileInput, openFilePicker } = useFileInput(handleFilesAdded, {
+    ariaLabel: t("dropTitle"),
+    accept: HTML_ACCEPT,
+  });
+
+  const handleUsePaste = useCallback(() => {
+    if (!pasteText.trim()) return;
+    if (new Blob([pasteText]).size > MAX_HTML_BYTES) {
+      setBanner(t("oversizedFile", { file: t("pastedHtml") }));
+      return;
+    }
+    setSource({ origin: "paste" });
+    setPreviewPage(1);
+    setPageCount(null);
+    setPreviewFailed(false);
+  }, [pasteText, t]);
+
+  // Keep pasteText on remove so the user can tweak the markup and re-preview.
+  const handleRemove = useCallback(() => {
+    setSource(null);
+    setPreviewImageData(null);
+    setPageCount(null);
+    setPreviewPage(1);
+    setPreviewFailed(false);
+  }, []);
+
+  /* ---- Live preview: debounced re-layout + render of the current page.
+     The monotonic request id drops superseded results (Strict Mode double
+     mounts, or the user typing faster than the worker lays out). ---- */
+  useEffect(() => {
+    if (isEmpty || debouncedHtml.trim() === "") {
+      setPreviewImageData(null);
+      setPageCount(null);
+      return;
+    }
+    const myReqId = ++reqIdRef.current;
+    setIsPreviewLoading(true);
+    (async () => {
+      try {
+        const dpr = window.devicePixelRatio || 1;
+        const cssWidth = previewBoxRef.current?.clientWidth ?? 600;
+        const targetWidthPx = Math.min(1600, Math.round(cssWidth * dpr));
+        const result = await renderHtmlPreview(
+          debouncedHtml,
+          resolveLayoutOptions(debouncedConfig),
+          debouncedPreviewPage - 1,
+          targetWidthPx
+        );
+        if (reqIdRef.current !== myReqId) return; // superseded
+        setPageCount(result.pageCount);
+        setPreviewImageData(result.imageData);
+        setPreviewFailed(false);
+        // Re-layout can shrink the document below the current page.
+        if (debouncedPreviewPage > result.pageCount) setPreviewPage(result.pageCount);
+      } catch {
+        if (reqIdRef.current !== myReqId) return;
+        setPreviewFailed(true);
+        setPreviewImageData(null);
+        setPageCount(null);
+      } finally {
+        if (reqIdRef.current === myReqId) setIsPreviewLoading(false);
+      }
+    })();
+  }, [isEmpty, debouncedHtml, debouncedConfig, debouncedPreviewPage]);
+
+  /* ---- Paint preview to canvas ---- */
+  useEffect(() => {
+    if (!previewImageData || !canvasRef.current) return;
+    const canvas = canvasRef.current;
+    canvas.width = previewImageData.width;
+    canvas.height = previewImageData.height;
+    const ctx = canvas.getContext("2d");
+    if (ctx) {
+      ctx.putImageData(previewImageData, 0, 0);
+    }
+  }, [previewImageData]);
+
+  /* ---- Export ---- */
+  const handleExport = useCallback(async () => {
+    if (!html.trim()) return;
+    setIsExporting(true);
+    try {
+      const title = extractHtmlTitle(html);
+      const { bytes } = await convertHtmlToPdf(html, resolveLayoutOptions(config, title));
+      downloadPdf(bytes, htmlPdfFilename(source?.origin === "file" ? source.name : null));
+    } catch {
+      setBanner(t("conversionFailed"));
+    } finally {
+      setIsExporting(false);
+    }
+  }, [html, config, source, t]);
+
+  const htmlByteSize = useMemo(() => (html ? new Blob([html]).size : 0), [html]);
+
+  const pasteEditor = (
+    <textarea
+      rows={12}
+      value={pasteText}
+      onChange={(e) => setPasteText(e.target.value)}
+      spellCheck={false}
+      placeholder={t("pastePlaceholder")}
+      aria-label={t("pasteLabel")}
+      className="w-full resize-y rounded-xl border border-border bg-background p-3 font-mono text-xs text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none"
+    />
+  );
+
+  return (
+    <>
+      {fileInput}
+
+      <ProcessingOverlay
+        visible={showOverlay}
+        title={t("overlayTitle")}
+        description={t("overlayDescription")}
+      />
+
+      {banner && (
+        <DismissibleBanner
+          message={banner}
+          dismissLabel={t("dismiss")}
+          onDismiss={() => setBanner(null)}
+        />
+      )}
+
+      <WizardContainer
+        icon={<HtmlIcon size={20} />}
+        title={t("title")}
+        empty={isEmpty}
+        wide={!isEmpty}
+        footer={
+          !isEmpty
+            ? {
+                statusText:
+                  pageCount != null ? t("pageCount", { count: pageCount }) : t("rendering"),
+                buttonLabel: isExporting ? t("converting") : t("downloadPdf"),
+                onButtonClick: handleExport,
+                disabled: isExporting || !html.trim(),
+              }
+            : undefined
+        }
+      >
+        {isEmpty ? (
+          <Tabs
+            value={inputMode}
+            onValueChange={(v) => setInputMode(v as InputMode)}
+            className="mt-6"
+          >
+            <TabsList className="w-full">
+              <TabsTrigger value="upload">{t("uploadTab")}</TabsTrigger>
+              <TabsTrigger value="paste">{t("pasteTab")}</TabsTrigger>
+            </TabsList>
+
+            <TabsContent value="upload">
+              <DropZone
+                title={t("dropTitle")}
+                subtitle={t("dropSubtitle")}
+                privacyNote={t("privacyNote")}
+                onClick={openFilePicker}
+                onDragOver={handleDropZoneDragOver}
+                onDragLeave={handleDropZoneDragLeave}
+                onDrop={handleDropZoneDrop}
+                isDragOver={isDragOver}
+                autoFocus
+                icon={HtmlFilePlusIcon}
+              />
+            </TabsContent>
+
+            <TabsContent value="paste">
+              <div className="flex flex-col gap-3">
+                {pasteEditor}
+                <button
+                  type="button"
+                  onClick={handleUsePaste}
+                  disabled={!pasteText.trim()}
+                  className="self-start rounded-xl bg-primary px-6 py-3 font-medium text-primary-foreground transition-all hover:shadow-lg disabled:opacity-60"
+                >
+                  {t("usePastedHtml")}
+                </button>
+                <p className="text-sm text-muted-foreground">{t("privacyNote")}</p>
+              </div>
+            </TabsContent>
+          </Tabs>
+        ) : (
+          <div className="grid grid-cols-1 gap-8 lg:grid-cols-2 lg:items-start">
+            <div className="space-y-6">
+              <div>
+                <h3 className="mb-4 text-xs font-medium uppercase tracking-widest text-muted-foreground">
+                  {t("file")}
+                </h3>
+                <FileCard
+                  name={source.origin === "file" ? source.name : t("pastedHtml")}
+                  subtitle={formatSize(htmlByteSize)}
+                  onRemove={handleRemove}
+                  removeTitle={t("remove")}
+                />
+              </div>
+
+              {source.origin === "paste" && (
+                <div>
+                  <h3 className="mb-4 text-xs font-medium uppercase tracking-widest text-muted-foreground">
+                    {t("pasteLabel")}
+                  </h3>
+                  {pasteEditor}
+                </div>
+              )}
+
+              <div>
+                <h3 className="mb-4 text-xs font-medium uppercase tracking-widest text-muted-foreground">
+                  {t("settings")}
+                </h3>
+
+                <div className="space-y-5 rounded-xl border border-border bg-card p-4">
+                  <label className="block">
+                    <span className="mb-2 block text-sm font-medium text-foreground">
+                      {t("pageSize")}
+                    </span>
+                    <select
+                      value={config.pageSize}
+                      onChange={(e) =>
+                        setConfig((c) => ({
+                          ...c,
+                          pageSize: e.target.value as HtmlPageSizeKey,
+                        }))
+                      }
+                      className="w-full rounded-lg border border-border bg-background px-2 py-1.5 text-sm text-foreground focus:border-primary focus:outline-none"
+                    >
+                      {HTML_PAGE_SIZE_KEYS.map((key) => (
+                        <option key={key} value={key}>
+                          {key}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+
+                  <div>
+                    <span className="mb-2 block text-sm font-medium text-foreground">
+                      {t("orientation")}
+                    </span>
+                    <div className="flex gap-2 rounded-xl border border-border bg-card p-1">
+                      {HTML_ORIENTATIONS.map((orientation) => (
+                        <button
+                          key={orientation}
+                          type="button"
+                          onClick={() => setConfig((c) => ({ ...c, orientation }))}
+                          className={`flex-1 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
+                            config.orientation === orientation
+                              ? "bg-primary text-primary-foreground"
+                              : "text-muted-foreground hover:bg-accent"
+                          }`}
+                        >
+                          {t(`orientation_${orientation}` as Parameters<typeof t>[0])}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div>
+                    <span className="mb-2 block text-sm font-medium text-foreground">
+                      {t("margins")}
+                    </span>
+                    <div className="flex gap-2 rounded-xl border border-border bg-card p-1">
+                      {HTML_MARGIN_PRESETS.map((margin) => (
+                        <button
+                          key={margin}
+                          type="button"
+                          onClick={() => setConfig((c) => ({ ...c, margin }))}
+                          className={`flex-1 rounded-lg px-2 py-2 text-sm font-medium transition-colors ${
+                            config.margin === margin
+                              ? "bg-primary text-primary-foreground"
+                              : "text-muted-foreground hover:bg-accent"
+                          }`}
+                        >
+                          {t(`margin_${margin}` as Parameters<typeof t>[0])}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div>
+                    <div className="mb-2 flex items-center justify-between">
+                      <span className="text-sm font-medium text-foreground">{t("textSize")}</span>
+                      <span className="text-xs font-medium text-foreground tabular-nums">
+                        {t("textSizeUnit", { size: config.emSize })}
+                      </span>
+                    </div>
+                    <input
+                      type="range"
+                      min={MIN_EM_SIZE}
+                      max={MAX_EM_SIZE}
+                      step={1}
+                      value={config.emSize}
+                      onChange={(e) =>
+                        setConfig((c) => ({ ...c, emSize: e.target.valueAsNumber }))
+                      }
+                      className="w-full accent-primary"
+                    />
+                  </div>
+
+                  <div className="h-px bg-border" />
+
+                  <label className="flex items-center gap-3">
+                    <button
+                      type="button"
+                      role="switch"
+                      aria-checked={config.keepLinks}
+                      onClick={() => setConfig((c) => ({ ...c, keepLinks: !c.keepLinks }))}
+                      className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors ${
+                        config.keepLinks ? "bg-primary" : "bg-border"
+                      }`}
+                    >
+                      <span
+                        className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform ${
+                          config.keepLinks ? "translate-x-4" : "translate-x-0.5"
+                        }`}
+                      />
+                    </button>
+                    <div>
+                      <span className="text-sm font-medium text-foreground">{t("keepLinks")}</span>
+                      <p className="text-xs text-muted-foreground">{t("keepLinksDesc")}</p>
+                    </div>
+                  </label>
+                </div>
+              </div>
+
+              <p className="text-xs text-muted-foreground">{t("localNote")}</p>
+            </div>
+
+            <div className="lg:sticky lg:top-8">
+              <h3 className="mb-4 text-xs font-medium uppercase tracking-widest text-muted-foreground">
+                {t("preview")}
+              </h3>
+
+              <div className="rounded-xl border border-border bg-card p-4">
+                <div className="mb-3 flex items-center gap-3">
+                  <label className="flex items-center gap-2">
+                    <span className="text-xs font-medium text-muted-foreground">
+                      {t("previewPage")}
+                    </span>
+                    <input
+                      type="number"
+                      min={1}
+                      max={pageCount ?? 1}
+                      value={previewPage}
+                      onChange={(e) => {
+                        const v = e.target.valueAsNumber;
+                        if (!isNaN(v)) setPreviewPage(v);
+                      }}
+                      onBlur={(e) => {
+                        const v = parseInt(e.target.value);
+                        const max = pageCount ?? 1;
+                        setPreviewPage(Math.max(1, Math.min(max, isNaN(v) ? 1 : v)));
+                      }}
+                      className="w-20 rounded-lg border border-border bg-background px-2 py-1 text-sm text-foreground focus:border-primary focus:outline-none"
+                    />
+                  </label>
+                  <span className="text-xs text-muted-foreground">/ {pageCount ?? "–"}</span>
+                  {isPreviewLoading && (
+                    <span className="ml-auto text-xs text-muted-foreground">{t("rendering")}</span>
+                  )}
+                </div>
+
+                <div
+                  ref={previewBoxRef}
+                  className="rounded-lg border border-border"
+                  style={checkerboardStyle}
+                >
+                  {previewFailed ? (
+                    <p className="py-12 text-center text-sm text-muted-foreground">
+                      {t("previewFailed")}
+                    </p>
+                  ) : (
+                    <canvas
+                      ref={canvasRef}
+                      className="block w-full rounded-lg"
+                      style={{ maxHeight: "70vh", objectFit: "contain" }}
+                    />
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+      </WizardContainer>
+    </>
+  );
+}

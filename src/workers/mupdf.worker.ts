@@ -17,6 +17,7 @@ import {
   type ImageProcessConfig,
 } from "@/lib/imageResize";
 import { applyContrastToPixels, type ContrastConfig } from "@/lib/contrast";
+import type { HtmlLayoutOptions } from "@/lib/htmlToPdf";
 
 type PdfMetadata = {
   title?: string;
@@ -245,6 +246,33 @@ function newOutputPdf(mupdf: Mupdf): MupdfPDFDocument {
   pdf.setMetaData("info:Creator", "hermitpdf.eu");
   pdf.setMetaData("info:Producer", "hermitpdf.eu");
   return pdf;
+}
+
+/**
+ * Open an HTML buffer as a reflowable document and lay it out to the content
+ * box (page minus margins). mupdf's default HTML stylesheet adds its own
+ * @page margin, so zero it via user CSS to make the caller's margin presets
+ * the single source of page margins — a document's own body/element margins
+ * still apply as authored. setUserCSS is global, but only reflowable formats
+ * read it (PDF rendering ignores it) and it must be installed before
+ * openDocument to take effect. Caller owns the returned doc.
+ */
+function openLaidOutHtml(
+  mupdf: Mupdf,
+  html: ArrayBuffer,
+  options: HtmlLayoutOptions
+): MupdfDocument {
+  mupdf.setUserCSS("@page{margin:0}");
+  const doc = mupdf.Document.openDocument(html, "text/html");
+  try {
+    const contentW = options.pageWidthPt - 2 * options.marginPt;
+    const contentH = options.pageHeightPt - 2 * options.marginPt;
+    doc.layout(contentW, contentH, options.emSize);
+    return doc;
+  } catch (e) {
+    doc.destroy();
+    throw e;
+  }
 }
 
 /**
@@ -1739,6 +1767,176 @@ const api = {
     if (output) {
       output.destroy();
       imagePdfBuilds.delete(buildId);
+    }
+  },
+
+  /**
+   * Lay out HTML and render one page — content plus white margins — for the
+   * live preview. Stateless: the document never enters the handle map and is
+   * destroyed before returning.
+   */
+  async renderHtmlPreview(
+    html: ArrayBuffer,
+    options: HtmlLayoutOptions,
+    pageIndex: number,
+    targetWidthPx: number
+  ): Promise<{ pageCount: number; imageData: ImageData }> {
+    const mupdf = await getMupdf();
+    const doc = openLaidOutHtml(mupdf, html, options);
+    try {
+      const pageCount = doc.countPages();
+      if (pageCount === 0) throw new Error("HTML laid out to an empty document");
+      const index = Math.max(0, Math.min(pageIndex, pageCount - 1));
+
+      const zoom = targetWidthPx / options.pageWidthPt;
+      const bbox: Rect = [
+        0,
+        0,
+        Math.round(options.pageWidthPt * zoom),
+        Math.round(options.pageHeightPt * zoom),
+      ];
+      const pixmap = new mupdf.Pixmap(mupdf.ColorSpace.DeviceRGB, bbox, true);
+      try {
+        pixmap.clear(255);
+        // Shift content in by the margins (points), then scale points → pixels.
+        const matrix = mupdf.Matrix.concat(
+          mupdf.Matrix.translate(options.marginPt, options.marginPt),
+          mupdf.Matrix.scale(zoom, zoom)
+        );
+        const page = doc.loadPage(index);
+        try {
+          const device = new mupdf.DrawDevice(matrix, pixmap);
+          try {
+            page.run(device, mupdf.Matrix.identity);
+            device.close();
+          } finally {
+            device.destroy();
+          }
+        } finally {
+          page.destroy();
+        }
+        const imageData = new ImageData(
+          pixmap.getPixels().slice(),
+          pixmap.getWidth(),
+          pixmap.getHeight()
+        );
+        return Comlink.transfer({ pageCount, imageData }, [imageData.data.buffer]);
+      } finally {
+        pixmap.destroy();
+      }
+    } finally {
+      doc.destroy();
+    }
+  },
+
+  /**
+   * Convert HTML to a text-based (selectable, vector) PDF. Pages are drawn
+   * through a DocumentWriter with the content shifted in by the margins.
+   * Hyperlinks are collected from the laid-out pages — the writer pipeline
+   * drops them, and internal anchors can only be resolved while the
+   * reflowable document is open — then re-added as link annotations on the
+   * reopened output, which is also where metadata is stamped.
+   */
+  async convertHtmlToPdf(
+    html: ArrayBuffer,
+    options: HtmlLayoutOptions
+  ): Promise<{ bytes: Uint8Array; pageCount: number }> {
+    const mupdf = await getMupdf();
+    const doc = openLaidOutHtml(mupdf, html, options);
+    const buffer = new mupdf.Buffer();
+    try {
+      type CollectedLink = {
+        pageIndex: number;
+        bounds: Rect;
+        uri: string;
+        external: boolean;
+        dest?: ReturnType<MupdfDocument["resolveLinkDestination"]>;
+      };
+      const links: CollectedLink[] = [];
+      const pageCount = doc.countPages();
+      const margin = options.marginPt;
+      const mediabox: Rect = [0, 0, options.pageWidthPt, options.pageHeightPt];
+      const shift = mupdf.Matrix.translate(margin, margin);
+
+      const writer = new mupdf.DocumentWriter(buffer, "PDF", "");
+      try {
+        for (let i = 0; i < pageCount; i++) {
+          const page = doc.loadPage(i);
+          try {
+            if (options.keepLinks) {
+              for (const link of page.getLinks()) {
+                const uri = link.getURI();
+                if (!uri) continue;
+                const external = link.isExternal();
+                links.push({
+                  pageIndex: i,
+                  bounds: link.getBounds(),
+                  uri,
+                  external,
+                  // Output pages map 1:1 onto laid-out pages, so a destination
+                  // resolved now stays valid in the output by page index.
+                  dest: external ? undefined : doc.resolveLinkDestination(link),
+                });
+              }
+            }
+            const device = writer.beginPage(mediabox);
+            try {
+              page.run(device, shift);
+              device.close();
+            } finally {
+              device.destroy();
+            }
+            writer.endPage();
+          } finally {
+            page.destroy();
+          }
+        }
+        writer.close();
+      } finally {
+        writer.destroy();
+      }
+
+      const outDoc = mupdf.Document.openDocument(buffer, "application/pdf");
+      try {
+        const out = outDoc.asPDF();
+        if (!out) throw new Error("DocumentWriter output is not a PDF");
+        out.setMetaData("info:Creator", "hermitpdf.eu");
+        out.setMetaData("info:Producer", "hermitpdf.eu");
+        if (options.title) out.setMetaData("info:Title", options.title);
+
+        for (const link of links) {
+          const page = out.loadPage(link.pageIndex);
+          try {
+            const [x0, y0, x1, y1] = link.bounds;
+            const rect: Rect = [x0 + margin, y0 + margin, x1 + margin, y1 + margin];
+            // Internal destinations shift with the content; formatLinkURI
+            // turns the adjusted destination back into a #page= URI that
+            // createLink stores as a proper GoTo action. (dest x/y can be
+            // null at runtime despite the declared types.)
+            const uri =
+              link.external || !link.dest
+                ? link.uri
+                : out.formatLinkURI({
+                    ...link.dest,
+                    x: (link.dest.x ?? 0) + margin,
+                    y: (link.dest.y ?? 0) + margin,
+                  });
+            page.createLink(rect, uri);
+          } catch {
+            // One malformed link must not fail the whole export.
+          } finally {
+            page.destroy();
+          }
+        }
+
+        const bytes = saveToTransferableBytes(out, "compress");
+        return Comlink.transfer({ bytes, pageCount }, [bytes.buffer]);
+      } finally {
+        outDoc.destroy();
+      }
+    } finally {
+      buffer.destroy();
+      doc.destroy();
     }
   },
 };
