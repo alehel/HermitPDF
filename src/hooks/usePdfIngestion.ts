@@ -25,12 +25,25 @@ function isPdf(file: File): boolean {
   );
 }
 
+// Ingestion needs crypto.randomUUID, OPFS, and Web Locks — all of which
+// browsers expose only in secure contexts (HTTPS or localhost) and some
+// disable in private browsing. Without this check every file would fail
+// ingestion and be misreported as "not a PDF".
+function isStorageSupported(): boolean {
+  return (
+    typeof crypto?.randomUUID === "function" &&
+    typeof navigator?.storage?.getDirectory === "function" &&
+    typeof navigator?.locks?.request === "function"
+  );
+}
+
 export function usePdfIngestion(hookOptions?: UsePdfIngestionOptions) {
   const [rejectedFiles, setRejectedFiles] = useState<string[]>([]);
   const [passwordProtectedFiles, setPasswordProtectedFiles] = useState<
     string[]
   >([]);
   const [oversizedFiles, setOversizedFiles] = useState<string[]>([]);
+  const [environmentUnsupported, setEnvironmentUnsupported] = useState(false);
 
   const allowProtected = hookOptions?.allowProtected ?? false;
   const acceptImages = hookOptions?.acceptImages ?? false;
@@ -42,6 +55,10 @@ export function usePdfIngestion(hookOptions?: UsePdfIngestionOptions) {
       fileList: FileList,
       options?: { maxFiles?: number }
     ): Promise<IngestResult> => {
+      if (!isStorageSupported()) {
+        setEnvironmentUnsupported(true);
+        return { files: [], fileCount: 0 };
+      }
       const allFiles = Array.from(fileList);
       const accepted = allFiles.filter(isFileAccepted);
       const rejected = allFiles
@@ -82,6 +99,7 @@ export function usePdfIngestion(hookOptions?: UsePdfIngestionOptions) {
             };
             return wizardFile;
           } catch (err) {
+            console.error(`Failed to ingest ${f.name}:`, err);
             const msg = err instanceof Error ? err.message.toLowerCase() : "";
             if (msg.includes("password") || msg.includes("encrypted")) {
               pwProtected.push(f.name);
@@ -112,5 +130,7 @@ export function usePdfIngestion(hookOptions?: UsePdfIngestionOptions) {
     setPasswordProtectedFiles,
     oversizedFiles,
     setOversizedFiles,
+    environmentUnsupported,
+    setEnvironmentUnsupported,
   };
 }
