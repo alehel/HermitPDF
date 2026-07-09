@@ -354,6 +354,20 @@ export function BatesIcon(props: IconProps) {
   );
 }
 
+export function AttachIcon(props: IconProps) {
+  return (
+    <Icon size={32} {...props}>
+      {/* Document with pages added above and below */}
+      <path d="M13.5 7H8a1.5 1.5 0 0 0-1.5 1.5v7A1.5 1.5 0 0 0 8 17h8a1.5 1.5 0 0 0 1.5-1.5V11z" />
+      <polyline points="13.5 7 13.5 11 17.5 11" />
+      <line x1="12" y1="1.5" x2="12" y2="4.5" />
+      <line x1="10.5" y1="3" x2="13.5" y2="3" />
+      <line x1="12" y1="19.5" x2="12" y2="22.5" />
+      <line x1="10.5" y1="21" x2="13.5" y2="21" />
+    </Icon>
+  );
+}
+
 export function ContrastIcon(props: IconProps) {
   return (
     <Icon size={32} {...props}>

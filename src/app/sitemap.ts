@@ -63,6 +63,12 @@ export default function sitemap(): MetadataRoute.Sitemap {
       priority: 0.8,
     },
     {
+      url: "https://hermitpdf.com/attach",
+      lastModified: new Date(),
+      changeFrequency: "monthly",
+      priority: 0.8,
+    },
+    {
       url: "https://hermitpdf.com/workbench",
       lastModified: new Date(),
       changeFrequency: "monthly",
