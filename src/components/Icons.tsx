@@ -315,6 +315,35 @@ export function RotateIcon(props: IconProps) {
   return <RotateRightIcon size={32} strokeWidth={1.5} {...props} />;
 }
 
+export function CollateIcon(props: IconProps) {
+  return (
+    <Icon size={32} {...props}>
+      {/* Two page columns feeding into an interleaved stack */}
+      <rect x="3" y="4" width="6" height="16" rx="1" />
+      <rect x="15" y="4" width="6" height="16" rx="1" />
+      <line x1="9" y1="8" x2="15" y2="10" />
+      <line x1="9" y1="12" x2="15" y2="14" />
+      <line x1="9" y1="16" x2="15" y2="18" />
+    </Icon>
+  );
+}
+
+export function CollateFilesIcon(props: IconProps) {
+  return (
+    <Icon size={72} strokeWidth={1.5} viewBox="0 0 28 28" {...props}>
+      {/* Two documents interleaving into one — pages alternating from each */}
+      <path d="M4,3 h7 l3,3 v6" />
+      <path d="M24,3 h-7 l-3,3 v6" />
+      <path d="M11,3 v3 h3" />
+      <path d="M17,3 v3 h-3" />
+      {/* Interleaved output stack */}
+      <rect x="8" y="14" width="12" height="2.5" rx="0.5" />
+      <rect x="8" y="18" width="12" height="2.5" rx="0.5" fill="currentColor" stroke="none" opacity="0.35" />
+      <rect x="8" y="22" width="12" height="2.5" rx="0.5" />
+    </Icon>
+  );
+}
+
 export function LockIcon(props: IconProps) {
   return (
     <Icon size={32} {...props}>

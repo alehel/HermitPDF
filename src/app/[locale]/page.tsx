@@ -5,6 +5,7 @@ import { Link } from "@/i18n/navigation";
 import { AppHeader } from "@/components/AppHeader";
 import {
   MergeIcon,
+  CollateIcon,
   ScissorsIcon,
   ExtractIcon,
   BatesIcon,
@@ -76,6 +77,7 @@ export default async function Home({
         </div>
         <div className="mb-10 grid w-full max-w-2xl grid-cols-2 gap-3 sm:grid-cols-4">
           <QuickActionCard href="/merge" icon={<MergeIcon />} title={t("merge")} description={t("mergeDesc")} />
+          <QuickActionCard href="/collate" icon={<CollateIcon />} title={t("collate")} description={t("collateDesc")} />
           <QuickActionCard href="/split" icon={<ScissorsIcon />} title={t("split")} description={t("splitDesc")} />
           <QuickActionCard href="/rotate" icon={<RotateIcon />} title={t("rotate")} description={t("rotateDesc")} />
           <QuickActionCard href="/extract" icon={<ExtractIcon />} title={t("extractImages")} description={t("extractImagesDesc")} />
