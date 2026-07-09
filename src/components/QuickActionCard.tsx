@@ -25,8 +25,8 @@ export function QuickActionCard({
       <div className="text-muted-foreground transition-colors group-hover:text-primary">
         {icon}
       </div>
-      <span className="text-sm font-medium text-foreground">{title}</span>
-      <span id={descId} className="hidden text-xs text-muted-foreground sm:inline">{description}</span>
+      <span className="text-center text-sm font-medium text-foreground">{title}</span>
+      <span id={descId} className="hidden text-center text-xs text-muted-foreground sm:inline">{description}</span>
     </Link>
   );
 }
