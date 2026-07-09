@@ -70,6 +70,8 @@ export function BatesWizard() {
     setPasswordProtectedFiles,
     oversizedFiles,
     setOversizedFiles,
+    environmentUnsupported,
+    setEnvironmentUnsupported,
   } = usePdfIngestion();
 
   /* ---- File ingestion ---- */
@@ -232,6 +234,8 @@ export function BatesWizard() {
         onDismissRejected={() => setRejectedFiles([])}
         onDismissPasswordProtected={() => setPasswordProtectedFiles([])}
         onDismissOversized={() => setOversizedFiles([])}
+        environmentUnsupported={environmentUnsupported}
+        onDismissEnvironmentUnsupported={() => setEnvironmentUnsupported(false)}
       />
 
       <WizardContainer

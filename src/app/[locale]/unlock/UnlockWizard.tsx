@@ -46,6 +46,8 @@ export function UnlockWizard() {
     setPasswordProtectedFiles,
     oversizedFiles,
     setOversizedFiles,
+    environmentUnsupported,
+    setEnvironmentUnsupported,
   } = usePdfIngestion({ allowProtected: true });
 
   const handleFilesAdded = useCallback(
@@ -177,6 +179,8 @@ export function UnlockWizard() {
         onDismissRejected={() => setRejectedFiles([])}
         onDismissPasswordProtected={() => setPasswordProtectedFiles([])}
         onDismissOversized={() => setOversizedFiles([])}
+        environmentUnsupported={environmentUnsupported}
+        onDismissEnvironmentUnsupported={() => setEnvironmentUnsupported(false)}
       />
 
       <WizardContainer

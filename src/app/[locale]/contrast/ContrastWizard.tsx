@@ -59,6 +59,8 @@ export function ContrastWizard() {
     setPasswordProtectedFiles,
     oversizedFiles,
     setOversizedFiles,
+    environmentUnsupported,
+    setEnvironmentUnsupported,
   } = usePdfIngestion();
 
   /* ---- File ingestion ---- */
@@ -222,6 +224,8 @@ export function ContrastWizard() {
         onDismissRejected={() => setRejectedFiles([])}
         onDismissPasswordProtected={() => setPasswordProtectedFiles([])}
         onDismissOversized={() => setOversizedFiles([])}
+        environmentUnsupported={environmentUnsupported}
+        onDismissEnvironmentUnsupported={() => setEnvironmentUnsupported(false)}
       />
 
       <WizardContainer

@@ -94,6 +94,8 @@ export function CompressWizard() {
     setPasswordProtectedFiles,
     oversizedFiles,
     setOversizedFiles,
+    environmentUnsupported,
+    setEnvironmentUnsupported,
   } = usePdfIngestion();
 
   /* ---- File ingestion ---- */
@@ -236,6 +238,8 @@ export function CompressWizard() {
         onDismissRejected={() => setRejectedFiles([])}
         onDismissPasswordProtected={() => setPasswordProtectedFiles([])}
         onDismissOversized={() => setOversizedFiles([])}
+        environmentUnsupported={environmentUnsupported}
+        onDismissEnvironmentUnsupported={() => setEnvironmentUnsupported(false)}
       />
 
       <WizardContainer

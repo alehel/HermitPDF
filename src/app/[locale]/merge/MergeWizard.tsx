@@ -42,6 +42,8 @@ export function MergeWizard() {
     setPasswordProtectedFiles,
     oversizedFiles,
     setOversizedFiles,
+    environmentUnsupported,
+    setEnvironmentUnsupported,
   } = usePdfIngestion({ acceptImages: true });
 
   /* ---- File ingestion ---- */
@@ -148,6 +150,8 @@ export function MergeWizard() {
         onDismissRejected={() => setRejectedFiles([])}
         onDismissPasswordProtected={() => setPasswordProtectedFiles([])}
         onDismissOversized={() => setOversizedFiles([])}
+        environmentUnsupported={environmentUnsupported}
+        onDismissEnvironmentUnsupported={() => setEnvironmentUnsupported(false)}
       />
 
       <WizardContainer
