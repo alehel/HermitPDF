@@ -229,7 +229,9 @@
     "storageUnsupported": "Your browser is blocking the local file storage HermitPDF needs, so files can't be loaded. This happens on plain-HTTP addresses other than localhost (e.g. when opened via a LAN IP) and in some private-browsing modes. Open the app over HTTPS or on localhost.",
     "dismiss": "Dismiss",
     "back": "Back",
-    "toggleTheme": "Toggle theme"
+    "toggleTheme": "Toggle theme",
+    "loadingFilesTitle": "Loading your files",
+    "loadingFilesDescription": "Reading and preparing your files — this may take a moment for large files."
   },
   "footer": {
     "copyright": "© {year}",

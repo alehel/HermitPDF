@@ -6,6 +6,7 @@ import { UnlockIcon, EyeIcon, EyeOffIcon } from "@/components/Icons";
 import { DropZone } from "@/components/DropZone";
 import { ProcessingOverlay } from "@/components/ProcessingOverlay";
 import { WizardBanners } from "@/components/WizardBanners";
+import { IngestionOverlay } from "@/components/IngestionOverlay";
 import { WizardContainer } from "@/components/WizardContainer";
 import { FileCard } from "@/components/FileCard";
 import { WizardFile } from "@/lib/types";
@@ -40,6 +41,7 @@ export function UnlockWizard() {
 
   const {
     ingestFiles,
+    isIngesting,
     rejectedFiles,
     setRejectedFiles,
     passwordProtectedFiles,
@@ -164,6 +166,8 @@ export function UnlockWizard() {
   return (
     <>
       {fileInput}
+
+      <IngestionOverlay active={isIngesting} />
 
       <ProcessingOverlay
         visible={showAuthOverlay || showExportOverlay}

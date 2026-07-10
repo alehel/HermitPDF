@@ -44,6 +44,9 @@ export function usePdfIngestion(hookOptions?: UsePdfIngestionOptions) {
   >([]);
   const [oversizedFiles, setOversizedFiles] = useState<string[]>([]);
   const [environmentUnsupported, setEnvironmentUnsupported] = useState(false);
+  // Counter rather than a boolean so overlapping batches (more files dropped
+  // while a previous batch is still parsing) don't clear the flag early.
+  const [pendingIngests, setPendingIngests] = useState(0);
 
   const allowProtected = hookOptions?.allowProtected ?? false;
   const acceptImages = hookOptions?.acceptImages ?? false;
@@ -59,71 +62,77 @@ export function usePdfIngestion(hookOptions?: UsePdfIngestionOptions) {
         setEnvironmentUnsupported(true);
         return { files: [], fileCount: 0 };
       }
-      const allFiles = Array.from(fileList);
-      const accepted = allFiles.filter(isFileAccepted);
-      const rejected = allFiles
-        .filter((f) => !isFileAccepted(f))
-        .map((f) => f.name);
-      const pwProtected: string[] = [];
-      const oversized = accepted
-        .filter((f) => f.size > MAX_INGEST_BYTES)
-        .map((f) => f.name);
+      setPendingIngests((n) => n + 1);
+      try {
+        const allFiles = Array.from(fileList);
+        const accepted = allFiles.filter(isFileAccepted);
+        const rejected = allFiles
+          .filter((f) => !isFileAccepted(f))
+          .map((f) => f.name);
+        const pwProtected: string[] = [];
+        const oversized = accepted
+          .filter((f) => f.size > MAX_INGEST_BYTES)
+          .map((f) => f.name);
 
-      const candidates = accepted.filter((f) => f.size <= MAX_INGEST_BYTES);
-      const toProcess =
-        options?.maxFiles != null
-          ? candidates.slice(0, options.maxFiles)
-          : candidates;
+        const candidates = accepted.filter((f) => f.size <= MAX_INGEST_BYTES);
+        const toProcess =
+          options?.maxFiles != null
+            ? candidates.slice(0, options.maxFiles)
+            : candidates;
 
-      const results = await Promise.all(
-        toProcess.map(async (f) => {
-          try {
-            const detected = acceptImages
-              ? await detectFile(f)
-              : { data: f as Blob, magic: "application/pdf" };
-            const result = await ingestDocument(
-              detected.data,
-              f.name,
-              f.size,
-              { allowProtected, magic: detected.magic }
-            );
-            const wizardFile: WizardFile = {
-              id: crypto.randomUUID(),
-              stack: result.stack,
-              name: f.name,
-              pageCount: result.stack.pages.length,
-              fileSize: f.size,
-              sourceDocId: result.sourceDocId,
-              needsPassword: result.needsPassword,
-              isImage: detected.magic.startsWith("image/"),
-            };
-            return wizardFile;
-          } catch (err) {
-            console.error(`Failed to ingest ${f.name}:`, err);
-            const msg = err instanceof Error ? err.message.toLowerCase() : "";
-            if (msg.includes("password") || msg.includes("encrypted")) {
-              pwProtected.push(f.name);
-            } else {
-              rejected.push(f.name);
+        const results = await Promise.all(
+          toProcess.map(async (f) => {
+            try {
+              const detected = acceptImages
+                ? await detectFile(f)
+                : { data: f as Blob, magic: "application/pdf" };
+              const result = await ingestDocument(
+                detected.data,
+                f.name,
+                f.size,
+                { allowProtected, magic: detected.magic }
+              );
+              const wizardFile: WizardFile = {
+                id: crypto.randomUUID(),
+                stack: result.stack,
+                name: f.name,
+                pageCount: result.stack.pages.length,
+                fileSize: f.size,
+                sourceDocId: result.sourceDocId,
+                needsPassword: result.needsPassword,
+                isImage: detected.magic.startsWith("image/"),
+              };
+              return wizardFile;
+            } catch (err) {
+              console.error(`Failed to ingest ${f.name}:`, err);
+              const msg = err instanceof Error ? err.message.toLowerCase() : "";
+              if (msg.includes("password") || msg.includes("encrypted")) {
+                pwProtected.push(f.name);
+              } else {
+                rejected.push(f.name);
+              }
+              return null;
             }
-            return null;
-          }
-        })
-      );
+          })
+        );
 
-      const files = results.filter((r): r is WizardFile => r !== null);
+        const files = results.filter((r): r is WizardFile => r !== null);
 
-      if (rejected.length > 0) setRejectedFiles(rejected);
-      if (pwProtected.length > 0) setPasswordProtectedFiles(pwProtected);
-      if (oversized.length > 0) setOversizedFiles(oversized);
+        if (rejected.length > 0) setRejectedFiles(rejected);
+        if (pwProtected.length > 0) setPasswordProtectedFiles(pwProtected);
+        if (oversized.length > 0) setOversizedFiles(oversized);
 
-      return { files, fileCount: accepted.length };
+        return { files, fileCount: accepted.length };
+      } finally {
+        setPendingIngests((n) => n - 1);
+      }
     },
     [isFileAccepted, acceptImages, allowProtected]
   );
 
   return {
     ingestFiles,
+    isIngesting: pendingIngests > 0,
     rejectedFiles,
     setRejectedFiles,
     passwordProtectedFiles,
