@@ -6,6 +6,7 @@ import { routing } from "@/i18n/routing";
 import { poppins, urbanist } from "@/fonts";
 import { ThemeProvider } from "@/components/ThemeProvider";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { ServiceWorkerRegistration } from "@/components/ServiceWorkerRegistration";
 import "../globals.css";
 
 export const metadata: Metadata = {
@@ -51,6 +52,7 @@ export default async function LocaleLayout({
         className="h-full antialiased"
         style={{ fontFamily: "var(--font-poppins), system-ui, sans-serif" }}
       >
+        <ServiceWorkerRegistration />
         <NextIntlClientProvider>
           <ThemeProvider>
             <TooltipProvider>
