@@ -6,6 +6,7 @@ import { AttachIcon } from "@/components/Icons";
 import { DropZone } from "@/components/DropZone";
 import { ProcessingOverlay } from "@/components/ProcessingOverlay";
 import { WizardBanners } from "@/components/WizardBanners";
+import { IngestionOverlay } from "@/components/IngestionOverlay";
 import { WizardContainer } from "@/components/WizardContainer";
 import { SortableFileList } from "@/components/SortableFileList";
 import type { WizardFile } from "@/lib/types";
@@ -39,6 +40,7 @@ export function AttachWizard() {
 
   const {
     ingestFiles,
+    isIngesting,
     rejectedFiles,
     setRejectedFiles,
     passwordProtectedFiles,
@@ -150,6 +152,8 @@ export function AttachWizard() {
       {documentsInput}
       {prependsInput}
       {appendsInput}
+
+      <IngestionOverlay active={isIngesting} />
 
       <ProcessingOverlay
         visible={showOverlay}

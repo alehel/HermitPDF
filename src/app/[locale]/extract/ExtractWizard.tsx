@@ -5,6 +5,7 @@ import { useTranslations } from "next-intl";
 import { ExtractIcon, DownloadIcon } from "@/components/Icons";
 import { DropZone } from "@/components/DropZone";
 import { WizardBanners } from "@/components/WizardBanners";
+import { IngestionOverlay } from "@/components/IngestionOverlay";
 import { WizardContainer } from "@/components/WizardContainer";
 import { FileCard } from "@/components/FileCard";
 import { WizardFile, ExtractedImage } from "@/lib/types";
@@ -36,6 +37,7 @@ export function ExtractWizard() {
 
   const {
     ingestFiles,
+    isIngesting,
     rejectedFiles,
     setRejectedFiles,
     passwordProtectedFiles,
@@ -146,6 +148,8 @@ export function ExtractWizard() {
   return (
     <>
       {fileInput}
+
+      <IngestionOverlay active={isIngesting} />
 
       <WizardBanners
         rejectedMessage={rejectedFiles.length > 0 ? t("rejectedFiles", { files: rejectedFiles.join(", ") }) : undefined}

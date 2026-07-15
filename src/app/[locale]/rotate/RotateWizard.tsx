@@ -6,6 +6,7 @@ import { RotateIcon, RotateLeftIcon, RotateRightIcon } from "@/components/Icons"
 import { DropZone } from "@/components/DropZone";
 import { ProcessingOverlay } from "@/components/ProcessingOverlay";
 import { WizardBanners } from "@/components/WizardBanners";
+import { IngestionOverlay } from "@/components/IngestionOverlay";
 import { WizardContainer } from "@/components/WizardContainer";
 import { FileCard } from "@/components/FileCard";
 import { PdfThumbnail } from "@/components/PdfThumbnail";
@@ -36,6 +37,7 @@ export function RotateWizard() {
 
   const {
     ingestFiles,
+    isIngesting,
     rejectedFiles,
     setRejectedFiles,
     passwordProtectedFiles,
@@ -135,6 +137,8 @@ export function RotateWizard() {
   return (
     <>
       {fileInput}
+
+      <IngestionOverlay active={isIngesting} />
 
       <ProcessingOverlay
         visible={showOverlay}

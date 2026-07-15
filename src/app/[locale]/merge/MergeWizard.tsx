@@ -5,6 +5,7 @@ import { useTranslations } from "next-intl";
 import { MergeIcon, MergeFilesIcon } from "@/components/Icons";
 import { DropZone } from "@/components/DropZone";
 import { ProcessingOverlay } from "@/components/ProcessingOverlay";
+import { IngestionOverlay } from "@/components/IngestionOverlay";
 import { WizardBanners } from "@/components/WizardBanners";
 import { WizardContainer } from "@/components/WizardContainer";
 import { SortableFileList } from "@/components/SortableFileList";
@@ -36,6 +37,7 @@ export function MergeWizard() {
 
   const {
     ingestFiles,
+    isIngesting,
     rejectedFiles,
     setRejectedFiles,
     passwordProtectedFiles,
@@ -135,6 +137,8 @@ export function MergeWizard() {
   return (
     <>
       {fileInput}
+
+      <IngestionOverlay active={isIngesting} />
 
       <ProcessingOverlay
         visible={showOverlay}

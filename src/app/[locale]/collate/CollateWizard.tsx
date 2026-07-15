@@ -6,6 +6,7 @@ import { CollateIcon, CollateFilesIcon } from "@/components/Icons";
 import { DropZone } from "@/components/DropZone";
 import { ProcessingOverlay } from "@/components/ProcessingOverlay";
 import { WizardBanners } from "@/components/WizardBanners";
+import { IngestionOverlay } from "@/components/IngestionOverlay";
 import { WizardContainer } from "@/components/WizardContainer";
 import { SortableFileList } from "@/components/SortableFileList";
 import { WizardFile } from "@/lib/types";
@@ -33,6 +34,7 @@ export function CollateWizard() {
 
   const {
     ingestFiles,
+    isIngesting,
     rejectedFiles,
     setRejectedFiles,
     passwordProtectedFiles,
@@ -123,6 +125,8 @@ export function CollateWizard() {
   return (
     <>
       {fileInput}
+
+      <IngestionOverlay active={isIngesting} />
 
       <ProcessingOverlay
         visible={showOverlay}
