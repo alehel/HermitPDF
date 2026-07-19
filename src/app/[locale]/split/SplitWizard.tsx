@@ -26,7 +26,8 @@ import { usePdfIngestion } from "@/hooks/usePdfIngestion";
 /*  Types and helpers                                                   */
 /* ------------------------------------------------------------------ */
 
-type SplitMode = "ranges" | "toc";
+type SplitMode = "ranges" | "chunks" | "toc";
+type ChunkStrategy = "pages" | "size";
 type OutlineState = "idle" | "loading" | "loaded" | "none";
 
 interface PageRange {
@@ -137,6 +138,101 @@ async function exportRangesAsZip(
   }
   const zipData = buildZip(entries);
   downloadZip(zipData, `${stem}_split.zip`);
+}
+
+function buildPageChunkRanges(pageCount: number, pagesPerChunk: number): PageRange[] {
+  const ranges: PageRange[] = [];
+  for (let from = 1; from <= pageCount; from += pagesPerChunk) {
+    ranges.push({
+      id: crypto.randomUUID(),
+      from,
+      to: Math.min(from + pagesPerChunk - 1, pageCount),
+    });
+  }
+  return ranges;
+}
+
+/** Thrown when a single page already exceeds the size limit, making the split impossible. */
+class ChunkPageTooLargeError extends Error {
+  constructor(
+    public pageNumber: number,
+    public pageSize: number
+  ) {
+    super(`Page ${pageNumber} exceeds the size limit`);
+  }
+}
+
+/** Greedily packs consecutive pages into chunks whose exported size stays
+ * under `limitBytes`. Chunk boundaries are found by galloping then binary
+ * search, so probe exports stay close to the final chunk length. Throws
+ * ChunkPageTooLargeError if a lone page is already over the limit. */
+async function computeSizeChunks(
+  file: WizardFile,
+  limitBytes: number
+): Promise<{ range: PageRange; data: Uint8Array }[]> {
+  const chunks: { range: PageRange; data: Uint8Array }[] = [];
+  const total = file.pageCount;
+  let start = 1;
+  while (start <= total) {
+    const maxLen = total - start + 1;
+    const exportLen = (len: number) =>
+      exportMergedPdf([
+        buildStackFromRange(file, { id: "probe", from: start, to: start + len - 1 }),
+      ]);
+
+    let bestData = await exportLen(1);
+    if (bestData.byteLength > limitBytes) {
+      throw new ChunkPageTooLargeError(start, bestData.byteLength);
+    }
+    let lo = 1; // largest length known to fit
+    let fail = maxLen + 1; // smallest length known not to fit
+
+    let probe = 2;
+    while (lo < maxLen && fail > maxLen) {
+      const tryLen = Math.min(probe, maxLen);
+      const data = await exportLen(tryLen);
+      if (data.byteLength <= limitBytes) {
+        lo = tryLen;
+        bestData = data;
+        probe *= 2;
+      } else {
+        fail = tryLen;
+      }
+    }
+    while (fail - lo > 1) {
+      const mid = Math.floor((lo + fail) / 2);
+      const data = await exportLen(mid);
+      if (data.byteLength <= limitBytes) {
+        lo = mid;
+        bestData = data;
+      } else {
+        fail = mid;
+      }
+    }
+
+    chunks.push({
+      range: { id: crypto.randomUUID(), from: start, to: start + lo - 1 },
+      data: bestData,
+    });
+    start += lo;
+  }
+  return chunks;
+}
+
+async function exportSizeChunks(
+  file: WizardFile,
+  limitBytes: number,
+  stem: string
+): Promise<void> {
+  const chunks = await computeSizeChunks(file, limitBytes);
+  if (chunks.length === 1) {
+    downloadPdf(chunks[0].data, formatRangeFilename(stem, chunks[0].range));
+  } else {
+    const zipData = buildZip(
+      chunks.map((c) => ({ name: formatRangeFilename(stem, c.range), data: c.data }))
+    );
+    downloadZip(zipData, `${stem}_split.zip`);
+  }
 }
 
 async function exportOutlineSelection(
@@ -252,6 +348,12 @@ export function SplitWizard() {
   const [mode, setMode] = useState<SplitMode>("ranges");
   const [ranges, setRanges] = useState<PageRange[]>([]);
 
+  // Fixed-chunks state
+  const [chunkStrategy, setChunkStrategy] = useState<ChunkStrategy>("pages");
+  const [chunkPagesInput, setChunkPagesInput] = useState("10");
+  const [chunkSizeMbInput, setChunkSizeMbInput] = useState("5");
+  const [chunkError, setChunkError] = useState<string | null>(null);
+
   // Outline state
   const [outline, setOutline] = useState<OutlineEntry[] | null>(null);
   const [outlineState, setOutlineState] = useState<OutlineState>("idle");
@@ -299,6 +401,7 @@ export function SplitWizard() {
       setOutlineState("idle");
       setSelectedOutline(new Set());
       setCollapsedOutline(new Set());
+      setChunkError(null);
 
       if (fileCount > 1) {
         setRejectedFiles([t("onlyOneFile")]);
@@ -355,6 +458,7 @@ export function SplitWizard() {
     setOutlineState("idle");
     setSelectedOutline(new Set());
     setCollapsedOutline(new Set());
+    setChunkError(null);
     setMode("ranges");
   }, []);
 
@@ -431,6 +535,15 @@ export function SplitWizard() {
     [file, ranges]
   );
 
+  const chunkPagesValue = parseInt(chunkPagesInput, 10);
+  const chunkPagesValid = Number.isFinite(chunkPagesValue) && chunkPagesValue >= 1;
+  const chunkSizeMbValue = parseFloat(chunkSizeMbInput);
+  const chunkSizeValid = Number.isFinite(chunkSizeMbValue) && chunkSizeMbValue > 0;
+  const chunkLimitBytes = chunkSizeValid ? Math.round(chunkSizeMbValue * 1024 * 1024) : 0;
+  const chunkConfigValid = chunkStrategy === "pages" ? chunkPagesValid : chunkSizeValid;
+  const pageChunkCount =
+    file && chunkPagesValid ? Math.ceil(file.pageCount / chunkPagesValue) : 0;
+
   const availableLevels = useMemo(() => {
     if (!outline) return [];
     const levels = new Set(outline.map((e) => e.level));
@@ -486,6 +599,40 @@ export function SplitWizard() {
       return;
     }
 
+    if (mode === "chunks") {
+      if (!chunkConfigValid) return;
+      setChunkError(null);
+      setIsSplitting(true);
+      try {
+        const stem = file.name.replace(/\.pdf$/i, "");
+        if (chunkStrategy === "pages") {
+          const list = buildPageChunkRanges(file.pageCount, chunkPagesValue);
+          if (list.length === 1) {
+            await exportSingleRangeAsPdf(file, list[0], stem);
+          } else {
+            await exportRangesAsZip(file, list, stem);
+          }
+        } else {
+          await exportSizeChunks(file, chunkLimitBytes, stem);
+        }
+      } catch (err) {
+        if (err instanceof ChunkPageTooLargeError) {
+          setChunkError(
+            t("chunkPageTooLarge", {
+              page: err.pageNumber,
+              size: formatSize(err.pageSize),
+              limit: formatSize(chunkLimitBytes),
+            })
+          );
+        } else {
+          throw err;
+        }
+      } finally {
+        setIsSplitting(false);
+      }
+      return;
+    }
+
     if (!outline || selectedOutline.size === 0) return;
     setIsSplitting(true);
     try {
@@ -502,7 +649,7 @@ export function SplitWizard() {
     } finally {
       setIsSplitting(false);
     }
-  }, [file, mode, ranges, outline, selectedOutline, filenamePrefix, filenameSeparator, addSequenceNumbers]);
+  }, [file, mode, ranges, outline, selectedOutline, filenamePrefix, filenameSeparator, addSequenceNumbers, chunkConfigValid, chunkStrategy, chunkPagesValue, chunkLimitBytes, t]);
 
   /* ---- Footer state derived from mode ---- */
   const footerStatus =
@@ -511,6 +658,12 @@ export function SplitWizard() {
         <span className="font-medium text-foreground">{validRanges.length}</span>{" "}
         {t("rangesCount", { count: validRanges.length })}
       </>
+    ) : mode === "chunks" ? (
+      chunkStrategy === "pages" ? (
+        <>{t("chunkFilesCount", { count: pageChunkCount })}</>
+      ) : (
+        <>{chunkSizeValid ? t("chunkSizeStatus", { limit: formatSize(chunkLimitBytes) }) : t("chunkInvalid")}</>
+      )
     ) : (
       <>
         <span className="font-medium text-foreground">{selectedOutline.size}</span>{" "}
@@ -520,7 +673,11 @@ export function SplitWizard() {
 
   const footerDisabled =
     isSplitting ||
-    (mode === "ranges" ? validRanges.length === 0 : selectedOutline.size === 0);
+    (mode === "ranges"
+      ? validRanges.length === 0
+      : mode === "chunks"
+        ? !chunkConfigValid
+        : selectedOutline.size === 0);
 
   return (
     <>
@@ -582,6 +739,7 @@ export function SplitWizard() {
             <Tabs value={mode} onValueChange={(v) => setMode(v as SplitMode)} className="mt-6">
               <TabsList>
                 <TabsTrigger value="ranges">{t("modeRanges")}</TabsTrigger>
+                <TabsTrigger value="chunks">{t("modeChunks")}</TabsTrigger>
                 <TabsTrigger value="toc">
                   {t("modeToc")}
                   {outlineState === "loaded" && outline && (
@@ -712,6 +870,103 @@ export function SplitWizard() {
                   </div>
 
                   <p className="mt-3 text-xs text-muted-foreground">{t("splitInfo")}</p>
+                </div>
+              </TabsContent>
+
+              {/* ====== Fixed chunks tab ====== */}
+              <TabsContent value="chunks">
+                <div className="mt-4">
+                  <p className="mb-3 text-xs font-medium uppercase tracking-widest text-muted-foreground">
+                    {t("chunkHeading")}
+                  </p>
+
+                  <div className="space-y-2">
+                    <label
+                      className={`flex cursor-pointer items-center gap-3 rounded-xl border bg-card p-3 ${
+                        chunkStrategy === "pages" && !chunkPagesValid
+                          ? "border-red-400/50 bg-red-500/5"
+                          : chunkStrategy === "pages"
+                            ? "border-primary"
+                            : "border-border"
+                      }`}
+                    >
+                      <input
+                        type="radio"
+                        name="chunkStrategy"
+                        checked={chunkStrategy === "pages"}
+                        onChange={() => {
+                          setChunkStrategy("pages");
+                          setChunkError(null);
+                        }}
+                        className="h-4 w-4 shrink-0 accent-primary"
+                      />
+                      <span className="flex-1 text-sm text-foreground">{t("chunkByPages")}</span>
+                      <input
+                        type="number"
+                        min={1}
+                        max={file.pageCount}
+                        value={chunkPagesInput}
+                        disabled={chunkStrategy !== "pages"}
+                        onChange={(e) => {
+                          setChunkPagesInput(e.target.value);
+                          setChunkError(null);
+                        }}
+                        className="w-20 rounded-lg border border-border bg-background px-2 py-1.5 text-center text-sm text-foreground outline-none focus:border-primary disabled:opacity-50"
+                      />
+                      <span className="text-sm text-muted-foreground">{t("chunkPagesUnit")}</span>
+                    </label>
+
+                    <label
+                      className={`flex cursor-pointer items-center gap-3 rounded-xl border bg-card p-3 ${
+                        chunkStrategy === "size" && !chunkSizeValid
+                          ? "border-red-400/50 bg-red-500/5"
+                          : chunkStrategy === "size"
+                            ? "border-primary"
+                            : "border-border"
+                      }`}
+                    >
+                      <input
+                        type="radio"
+                        name="chunkStrategy"
+                        checked={chunkStrategy === "size"}
+                        onChange={() => {
+                          setChunkStrategy("size");
+                          setChunkError(null);
+                        }}
+                        className="h-4 w-4 shrink-0 accent-primary"
+                      />
+                      <span className="flex-1 text-sm text-foreground">{t("chunkBySize")}</span>
+                      <input
+                        type="number"
+                        min={0.1}
+                        step={0.5}
+                        value={chunkSizeMbInput}
+                        disabled={chunkStrategy !== "size"}
+                        onChange={(e) => {
+                          setChunkSizeMbInput(e.target.value);
+                          setChunkError(null);
+                        }}
+                        className="w-20 rounded-lg border border-border bg-background px-2 py-1.5 text-center text-sm text-foreground outline-none focus:border-primary disabled:opacity-50"
+                      />
+                      <span className="text-sm text-muted-foreground">{t("chunkSizeUnit")}</span>
+                    </label>
+                  </div>
+
+                  {chunkError && (
+                    <div className="mt-3 rounded-xl border border-red-400/50 bg-red-500/5 p-3 text-sm text-red-500">
+                      {chunkError}
+                    </div>
+                  )}
+
+                  <p className="mt-3 text-xs text-muted-foreground">
+                    {chunkStrategy === "pages"
+                      ? chunkPagesValid
+                        ? t("chunkPagesInfo", { count: pageChunkCount })
+                        : t("chunkInvalid")
+                      : chunkSizeValid
+                        ? t("chunkSizeInfo")
+                        : t("chunkInvalid")}
+                  </p>
                 </div>
               </TabsContent>
 
