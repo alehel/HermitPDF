@@ -35,6 +35,7 @@ const ROUTES = [
   "/compress",
   "/contrast",
   "/extract",
+  "/links",
   "/merge",
   "/protect",
   "/rotate",

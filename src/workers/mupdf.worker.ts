@@ -3,7 +3,7 @@
 // runtime so the .wasm binary is fetched from /public.
 
 import * as Comlink from "comlink";
-import type { BatesPosition, ExtractedImage, OutlineEntry } from "@/lib/types";
+import type { BatesPosition, ExternalLink, ExtractedImage, OutlineEntry } from "@/lib/types";
 import {
   formatBatesNumber,
   computeShrinkTransform,
@@ -1443,6 +1443,43 @@ const api = {
     }
 
     return entries;
+  },
+
+  /**
+   * Collect external web links (http/https URIs) from every page of the
+   * document. Internal navigation links — TOC entries, cross-references —
+   * resolve to a page in the same document and are skipped, as are external
+   * schemes that aren't websites (mailto:, file:, …). Duplicate hits of the
+   * same URI on the same page (e.g. a link annotation split across lines)
+   * are collapsed; the same URI on different pages is kept per page so the
+   * caller can show where each link appears.
+   */
+  getExternalLinks(handle: number): ExternalLink[] {
+    const { doc } = getDoc(handle);
+    const results: ExternalLink[] = [];
+    const seen = new Set<string>();
+    const pageCount = doc.countPages();
+    for (let i = 0; i < pageCount; i++) {
+      const page = doc.loadPage(i);
+      try {
+        for (const link of page.getLinks()) {
+          try {
+            if (!link.isExternal()) continue;
+            const uri = link.getURI();
+            if (!/^https?:\/\//i.test(uri)) continue;
+            const key = `${i} ${uri}`;
+            if (seen.has(key)) continue;
+            seen.add(key);
+            results.push({ uri, pageIndex: i });
+          } finally {
+            link.destroy();
+          }
+        }
+      } finally {
+        page.destroy();
+      }
+    }
+    return results;
   },
 
   /**

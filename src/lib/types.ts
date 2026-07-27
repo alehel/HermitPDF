@@ -51,6 +51,11 @@ export interface ImagePosition {
   height: number;
 }
 
+export interface ExternalLink {
+  uri: string;
+  pageIndex: number;
+}
+
 export type BatesPosition =
   | "top-left"
   | "top-center"

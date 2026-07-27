@@ -1,7 +1,7 @@
 import * as Comlink from "comlink";
 import type { MupdfWorkerApi } from "@/workers/mupdf.worker";
 import { retrieveDoc } from "./pdfStore";
-import type { PageRef, PdfMetadata, ExtractedImage, ImagePosition, BatesConfig, CompressConfig, OutlineEntry } from "./types";
+import type { PageRef, PdfMetadata, ExternalLink, ExtractedImage, ImagePosition, BatesConfig, CompressConfig, OutlineEntry } from "./types";
 import type { ImageProcessConfig } from "./imageResize";
 import type { ContrastConfig } from "./contrast";
 
@@ -373,6 +373,17 @@ export function beginContrastExport(): ContrastExportBuilder {
     finish: async () => getWorker().imagePdfFinish(await buildId),
     abort: async () => getWorker().imagePdfAbort(await buildId),
   };
+}
+
+/**
+ * Collect external web links (http/https) from all pages of a document.
+ * Internal navigation links (TOC entries, cross-references) are excluded.
+ */
+export async function getExternalLinks(docId: string): Promise<ExternalLink[]> {
+  return trackOp(docId, (async () => {
+    const handle = await ensureLoaded(docId);
+    return getWorker().getExternalLinks(handle) as Promise<ExternalLink[]>;
+  })());
 }
 
 /** Load the document outline (bookmarks) as a flat list with page ranges. */
