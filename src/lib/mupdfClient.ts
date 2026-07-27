@@ -123,6 +123,31 @@ export async function getPageCount(docId: string): Promise<number> {
   })());
 }
 
+/** Size of a page in points. pageIndex is 0-based. */
+export async function getPageSize(
+  docId: string,
+  pageIndex: number
+): Promise<{ widthPt: number; heightPt: number }> {
+  return trackOp(docId, (async () => {
+    const handle = await ensureLoaded(docId);
+    return getWorker().getPageSize(handle, pageIndex);
+  })());
+}
+
+/**
+ * Effective resolution of a page in DPI, from its dominant raster image;
+ * null for pages without meaningful raster content. pageIndex is 0-based.
+ */
+export async function getPageDpi(
+  docId: string,
+  pageIndex: number
+): Promise<number | null> {
+  return trackOp(docId, (async () => {
+    const handle = await ensureLoaded(docId);
+    return getWorker().getPageDpi(handle, pageIndex);
+  })());
+}
+
 /**
  * Renders a page as ImageData for direct canvas painting.
  * pageIndex is 0-based. Rotation is applied at render time.
@@ -367,6 +392,48 @@ export function beginContrastExport(): ContrastExportBuilder {
           pageIndex,
           dpi,
           config,
+          encoding
+        );
+      })()),
+    finish: async () => getWorker().imagePdfFinish(await buildId),
+    abort: async () => getWorker().imagePdfAbort(await buildId),
+  };
+}
+
+export interface BookScanExportBuilder {
+  /** Render a cropped region of a source page and append it to the build. */
+  addPage(
+    docId: string,
+    pageIndex: number,
+    dpi: number,
+    crop: { x0: number; y0: number; x1: number; y1: number },
+    targetHeightPt: number,
+    encoding: ContrastPageEncoding
+  ): Promise<void>;
+  /** Save the finished PDF and discard the build. */
+  finish(): Promise<Uint8Array>;
+  /** Discard the build. Safe to call unconditionally, even after finish(). */
+  abort(): Promise<void>;
+}
+
+/**
+ * Incrementally build a PDF from cropped, uniformly-sized renders of source
+ * pages. Used by the book-scan wizard's export. Same memory profile as the
+ * contrast export: one page's buffers at a time, all worker-side.
+ */
+export function beginBookScanExport(): BookScanExportBuilder {
+  const buildId = getWorker().imagePdfBegin();
+  return {
+    addPage: (docId, pageIndex, dpi, crop, targetHeightPt, encoding) =>
+      trackOp(docId, (async () => {
+        const handle = await ensureLoaded(docId);
+        return getWorker().imagePdfAddCroppedPage(
+          await buildId,
+          handle,
+          pageIndex,
+          dpi,
+          crop,
+          targetHeightPt,
           encoding
         );
       })()),
