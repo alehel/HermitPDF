@@ -27,6 +27,11 @@ export interface ScanItem {
   /** Page width / height in points, captured at ingest. */
   widthPt: number;
   heightPt: number;
+  /**
+   * Effective resolution of the source scan in DPI (pixels over physical
+   * size), or null when the page has no raster content to measure.
+   */
+  nativeDpi: number | null;
 }
 
 export const FULL_CROP: CropRect = { x0: 0, y0: 0, x1: 1, y1: 1 };
@@ -81,15 +86,41 @@ export const OUTPUT_PAGE_HEIGHT_PT = 792;
 
 /**
  * Render DPI (relative to the source page's point size) that makes the crop
- * come out at `presetDpi` relative to the *output* page — so the chosen
- * quality preset means the same pixel density on every exported page no
- * matter how large the source scan was. Capped to keep pathological tiny
- * crops from exploding render memory.
+ * come out at `outputDpi` relative to the *output* page — so the chosen
+ * resolution means the same pixel density on every exported page no matter
+ * how large the source scan was. Capped to keep pathological tiny crops
+ * from exploding render memory.
  */
-export function renderDpiForRegion(presetDpi: number, cropHeightPt: number): number {
-  const dpi = (presetDpi * OUTPUT_PAGE_HEIGHT_PT) / cropHeightPt;
-  return Math.min(Math.max(dpi, 24), 600);
+export function renderDpiForRegion(outputDpi: number, cropHeightPt: number): number {
+  const dpi = (outputDpi * OUTPUT_PAGE_HEIGHT_PT) / cropHeightPt;
+  return Math.min(Math.max(dpi, 24), 1200);
 }
+
+/** Fallback output DPI when no scan carries measurable raster content. */
+export const FALLBACK_OUTPUT_DPI = 300;
+
+/**
+ * The highest output DPI that doesn't upscale any scan: for each item, the
+ * cropped region has nativeDpi × cropHeight native pixel rows, which the
+ * output page spreads over OUTPUT_PAGE_HEIGHT_PT — the minimum of those
+ * densities is the point past which the *worst* scan would be invented
+ * detail. Rendering everything at this DPI keeps the lowest-resolution
+ * page untouched and downsamples the rest to match. Null when no item has
+ * measurable resolution.
+ */
+export function matchOutputDpi(items: ScanItem[]): number | null {
+  let min: number | null = null;
+  for (const item of items) {
+    if (item.nativeDpi === null) continue;
+    const cropHeightPt = item.heightPt * (item.crop.y1 - item.crop.y0);
+    const dpi = (item.nativeDpi * cropHeightPt) / OUTPUT_PAGE_HEIGHT_PT;
+    if (min === null || dpi < min) min = dpi;
+  }
+  return min;
+}
+
+/** Lower-resolution choices offered to the user, filtered against the cap. */
+export const DPI_CHOICES = [600, 450, 300, 200, 150, 100, 75];
 
 export function bookScanFilename(firstFileName: string): string {
   const base = firstFileName.replace(/\.(pdf|jpe?g|png|heic|heif|webp)$/i, "");

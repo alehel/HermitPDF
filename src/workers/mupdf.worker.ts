@@ -1174,6 +1174,47 @@ const api = {
     }
   },
 
+  /**
+   * Effective resolution of a page in DPI, taken from the largest image drawn
+   * on it: the image's pixel count divided by the physical area it covers.
+   * For a scanned page (one image covering the whole page) this is exactly
+   * the scan's DPI. Returns null for pages without meaningful raster content
+   * (pure text/vector pages have no native resolution to respect).
+   */
+  getPageDpi(handle: number, pageIndex: number): number | null {
+    const { doc } = getDoc(handle);
+    const page = doc.loadPage(pageIndex);
+    try {
+      const stext = page.toStructuredText("preserve-images");
+      try {
+        let best: { area: number; dpi: number } | null = null;
+        stext.walk({
+          onImageBlock(bbox, _transform, image) {
+            const wPt = bbox[2] - bbox[0];
+            const hPt = bbox[3] - bbox[1];
+            if (wPt <= 0 || hPt <= 0) return;
+            const w = image.getWidth();
+            const h = image.getHeight();
+            if (w < 10 || h < 10) return;
+            // An anisotropically-stretched image has two densities; the
+            // smaller one is what limits perceived sharpness.
+            const dpi = Math.min(w / (wPt / 72), h / (hPt / 72));
+            const area = wPt * hPt;
+            if (!best || area > best.area) best = { area, dpi };
+          },
+        });
+        // TS narrows `best` to null here (it can't see the closure write),
+        // so widen it back explicitly.
+        const found = best as { area: number; dpi: number } | null;
+        return found ? found.dpi : null;
+      } finally {
+        stext.destroy();
+      }
+    } finally {
+      page.destroy();
+    }
+  },
+
   renderPage(
     handle: number,
     pageIndex: number,

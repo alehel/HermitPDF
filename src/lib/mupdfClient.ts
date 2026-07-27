@@ -135,6 +135,20 @@ export async function getPageSize(
 }
 
 /**
+ * Effective resolution of a page in DPI, from its dominant raster image;
+ * null for pages without meaningful raster content. pageIndex is 0-based.
+ */
+export async function getPageDpi(
+  docId: string,
+  pageIndex: number
+): Promise<number | null> {
+  return trackOp(docId, (async () => {
+    const handle = await ensureLoaded(docId);
+    return getWorker().getPageDpi(handle, pageIndex);
+  })());
+}
+
+/**
  * Renders a page as ImageData for direct canvas painting.
  * pageIndex is 0-based. Rotation is applied at render time.
  */

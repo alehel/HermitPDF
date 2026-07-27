@@ -18,17 +18,20 @@ import {
   clampSplit,
   cropRegions,
   defaultSplit,
+  DPI_CHOICES,
+  FALLBACK_OUTPUT_DPI,
   FULL_CROP,
   guessKind,
+  matchOutputDpi,
   OUTPUT_PAGE_HEIGHT_PT,
   outputPageCount,
   renderDpiForRegion,
   type ScanItem,
   type ScanKind,
 } from "@/lib/bookscan";
-import { DPI_FOR_PRESET, type ExportDpiPreset } from "@/lib/contrast";
 import {
   beginBookScanExport,
+  getPageDpi,
   getPageSize,
   renderPage,
 } from "@/lib/mupdfClient";
@@ -38,7 +41,6 @@ import { useDropZone } from "@/hooks/useDropZone";
 import { useFileInput } from "@/hooks/useFileInput";
 import { usePdfIngestion } from "@/hooks/usePdfIngestion";
 
-const PRESETS: ExportDpiPreset[] = ["low", "medium", "high"];
 /** Longest preview dimension in pixels — keeps huge scans responsive. */
 const MAX_PREVIEW_PX = 1600;
 
@@ -47,7 +49,9 @@ export function BookScanWizard() {
 
   const [items, setItems] = useState<ScanItem[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [dpiPreset, setDpiPreset] = useState<ExportDpiPreset>("medium");
+  // "match" follows the lowest-resolution scan; a number is an explicit,
+  // lower, user-chosen output DPI.
+  const [outputDpi, setOutputDpi] = useState<number | "match">("match");
   const [isExporting, setIsExporting] = useState(false);
   const [exportProgress, setExportProgress] = useState<{ done: number; total: number } | null>(null);
   const showOverlay = useDelayedFlag(isExporting);
@@ -85,10 +89,10 @@ export function BookScanWizard() {
         filesRef.current.set(file.id, file);
         for (let i = 0; i < file.stack.pages.length; i++) {
           const page = file.stack.pages[i];
-          const { widthPt, heightPt } = await getPageSize(
-            page.sourceDocId,
-            page.sourcePageIndex
-          );
+          const [{ widthPt, heightPt }, nativeDpi] = await Promise.all([
+            getPageSize(page.sourceDocId, page.sourcePageIndex),
+            getPageDpi(page.sourceDocId, page.sourcePageIndex),
+          ]);
           newItems.push({
             id: page.id,
             fileId: file.id,
@@ -101,6 +105,7 @@ export function BookScanWizard() {
             split: defaultSplit(FULL_CROP),
             widthPt,
             heightPt,
+            nativeDpi,
           });
         }
       }
@@ -219,6 +224,15 @@ export function BookScanWizard() {
     // Only the page identity matters — crop edits must not re-render.
   }, [selected?.sourceDocId, selected?.pageIndex]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  /* ---- Output resolution ----
+     The cap follows the lowest-resolution scan, so it shifts as items and
+     crops change; an explicit choice at or above the current cap is
+     equivalent to matching it. */
+  const matchDpi = useMemo(() => matchOutputDpi(items), [items]);
+  const capDpi = matchDpi ?? FALLBACK_OUTPUT_DPI;
+  const effectiveDpi = outputDpi === "match" ? capDpi : Math.min(outputDpi, capDpi);
+  const lowerChoices = DPI_CHOICES.filter((dpi) => dpi < capDpi);
+
   /* ---- Export ---- */
   const handleExport = useCallback(async () => {
     const exportItems = itemsRef.current;
@@ -227,7 +241,6 @@ export function BookScanWizard() {
     setIsExporting(true);
     setExportProgress({ done: 0, total });
 
-    const presetDpi = DPI_FOR_PRESET[dpiPreset];
     const build = beginBookScanExport();
     try {
       let done = 0;
@@ -237,7 +250,7 @@ export function BookScanWizard() {
           await build.addPage(
             item.sourceDocId,
             item.pageIndex,
-            renderDpiForRegion(presetDpi, cropHeightPt),
+            renderDpiForRegion(effectiveDpi, cropHeightPt),
             region,
             OUTPUT_PAGE_HEIGHT_PT,
             { format: "jpeg", quality: 90 }
@@ -256,7 +269,7 @@ export function BookScanWizard() {
       setIsExporting(false);
       setExportProgress(null);
     }
-  }, [dpiPreset]);
+  }, [effectiveDpi]);
 
   const isEmpty = items.length === 0;
   const totalOutputPages = outputPageCount(items);
@@ -409,28 +422,36 @@ export function BookScanWizard() {
 
               <div className="mt-6">
                 <h3 className="mb-4 text-xs font-medium uppercase tracking-widest text-muted-foreground">
-                  {t("exportQuality")}
+                  {t("outputResolution")}
                 </h3>
-                <div className="flex gap-2 rounded-xl border border-border bg-card p-1">
-                  {PRESETS.map((preset) => (
+                <div className="flex flex-wrap gap-2 rounded-xl border border-border bg-card p-1">
+                  <button
+                    type="button"
+                    onClick={() => setOutputDpi("match")}
+                    className={`flex-1 whitespace-nowrap rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
+                      effectiveDpi === capDpi
+                        ? "bg-primary text-primary-foreground"
+                        : "text-muted-foreground hover:bg-accent"
+                    }`}
+                  >
+                    {t("matchResolution", { dpi: Math.round(capDpi) })}
+                  </button>
+                  {lowerChoices.map((dpi) => (
                     <button
-                      key={preset}
+                      key={dpi}
                       type="button"
-                      onClick={() => setDpiPreset(preset)}
+                      onClick={() => setOutputDpi(dpi)}
                       className={`flex-1 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
-                        dpiPreset === preset
+                        effectiveDpi === dpi
                           ? "bg-primary text-primary-foreground"
                           : "text-muted-foreground hover:bg-accent"
                       }`}
                     >
-                      <span className="block">{t(`preset_${preset}`)}</span>
-                      <span className="block text-[10px] font-normal opacity-70">
-                        {DPI_FOR_PRESET[preset]} DPI
-                      </span>
+                      {t("dpiOption", { dpi })}
                     </button>
                   ))}
                 </div>
-                <p className="mt-2 text-xs text-muted-foreground">{t("exportQualityHint")}</p>
+                <p className="mt-2 text-xs text-muted-foreground">{t("outputResolutionHint")}</p>
               </div>
             </div>
 
