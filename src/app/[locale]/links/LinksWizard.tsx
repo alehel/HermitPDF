@@ -18,23 +18,43 @@ import { usePdfIngestion } from "@/hooks/usePdfIngestion";
 
 interface LinkGroup {
   uri: string;
+  /** Visible text the link is behind, "" when none or redundant with the URI. */
+  label: string;
   /** 0-based page indices the link appears on, ascending. */
   pageIndices: number[];
 }
 
 /**
+ * Whether a label adds nothing over the URI itself — the common case of a
+ * bare URL printed in the text ("www.example.com" linking to
+ * https://www.example.com/). Compared with scheme, www. prefix, and
+ * trailing slash stripped.
+ */
+function isRedundantLabel(label: string, uri: string): boolean {
+  const normalize = (s: string) =>
+    s.toLowerCase().replace(/^https?:\/\//, "").replace(/^www\./, "").replace(/\/$/, "");
+  return normalize(label) === normalize(uri);
+}
+
+/**
  * Collapse per-page link hits into one row per unique URI, preserving
- * first-seen order and collecting every page the URI appears on.
+ * first-seen order and collecting every page the URI appears on. The
+ * longest label across pages wins — the same link may sit over truncated
+ * text on one page and the full caption on another.
  */
 function groupLinks(links: ExternalLink[]): LinkGroup[] {
   const byUri = new Map<string, LinkGroup>();
   for (const link of links) {
     let group = byUri.get(link.uri);
     if (!group) {
-      group = { uri: link.uri, pageIndices: [] };
+      group = { uri: link.uri, label: "", pageIndices: [] };
       byUri.set(link.uri, group);
     }
     group.pageIndices.push(link.pageIndex);
+    if (link.label.length > group.label.length) group.label = link.label;
+  }
+  for (const group of byUri.values()) {
+    if (group.label && isRedundantLabel(group.label, group.uri)) group.label = "";
   }
   return [...byUri.values()];
 }
@@ -214,9 +234,14 @@ export function LinksWizard() {
                       >
                         <ExternalLinkIcon className="mt-0.5 shrink-0 text-muted-foreground transition-colors group-hover/link:text-primary" />
                         <span className="min-w-0 flex-1">
-                          <span className="block break-all text-sm text-foreground transition-colors group-hover/link:text-primary">
-                            {group.uri}
+                          <span className={`block text-sm text-foreground transition-colors group-hover/link:text-primary ${group.label ? "break-words" : "break-all"}`}>
+                            {group.label || group.uri}
                           </span>
+                          {group.label && (
+                            <span className="mt-0.5 block break-all text-xs text-muted-foreground">
+                              {group.uri}
+                            </span>
+                          )}
                           <span className="mt-0.5 block text-xs text-muted-foreground">
                             {t("onPages", {
                               count: group.pageIndices.length,

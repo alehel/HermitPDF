@@ -54,6 +54,8 @@ export interface ImagePosition {
 export interface ExternalLink {
   uri: string;
   pageIndex: number;
+  /** Visible text under the link's rectangle, "" when none (e.g. image links). */
+  label: string;
 }
 
 export type BatesPosition =

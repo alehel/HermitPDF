@@ -1453,28 +1453,76 @@ const api = {
    * same URI on the same page (e.g. a link annotation split across lines)
    * are collapsed; the same URI on different pages is kept per page so the
    * caller can show where each link appears.
+   *
+   * A PDF link is just a rectangle over the page with a URI attached — it
+   * has no intrinsic anchor text. To recover the visible label ("Read the
+   * full report"), each page with links is walked via structured text and
+   * every character whose quad midpoint falls inside a link's (slightly
+   * expanded) rectangle is accumulated into that link's label. Links over
+   * images or empty regions end up with an empty label.
    */
   getExternalLinks(handle: number): ExternalLink[] {
     const { doc } = getDoc(handle);
     const results: ExternalLink[] = [];
-    const seen = new Set<string>();
     const pageCount = doc.countPages();
     for (let i = 0; i < pageCount; i++) {
       const page = doc.loadPage(i);
       try {
+        const hits: { uri: string; rect: Rect; text: string; pendingGap: boolean }[] = [];
         for (const link of page.getLinks()) {
           try {
             if (!link.isExternal()) continue;
             const uri = link.getURI();
             if (!/^https?:\/\//i.test(uri)) continue;
-            const key = `${i} ${uri}`;
-            if (seen.has(key)) continue;
-            seen.add(key);
-            results.push({ uri, pageIndex: i });
+            hits.push({ uri, rect: link.getBounds(), text: "", pendingGap: false });
           } finally {
             link.destroy();
           }
         }
+        if (hits.length === 0) continue;
+
+        const stext = page.toStructuredText();
+        try {
+          stext.walk({
+            onChar(c, _origin, _font, _size, quad) {
+              const cx = (quad[0] + quad[2] + quad[4] + quad[6]) / 4;
+              const cy = (quad[1] + quad[3] + quad[5] + quad[7]) / 4;
+              for (const hit of hits) {
+                const [x0, y0, x1, y1] = hit.rect;
+                // 1pt tolerance: link rects are often drawn tight around the
+                // glyph boxes and would otherwise drop edge characters.
+                if (cx >= x0 - 1 && cx <= x1 + 1 && cy >= y0 - 1 && cy <= y1 + 1) {
+                  if (hit.pendingGap && hit.text) hit.text += " ";
+                  hit.pendingGap = false;
+                  hit.text += c;
+                }
+              }
+            },
+            endLine() {
+              // Chars carry no whitespace across lines; remember the boundary
+              // so multi-line labels get a space instead of running together.
+              for (const hit of hits) hit.pendingGap = true;
+            },
+          });
+        } finally {
+          stext.destroy();
+        }
+
+        // Merge duplicate URI hits on the same page. Multi-line links are
+        // often split into one annotation per line — stitch their label
+        // fragments together; identical repeats (e.g. the same nav link in
+        // header and footer) are kept once via the containment check.
+        const byUri = new Map<string, ExternalLink>();
+        for (const hit of hits) {
+          const label = hit.text.replace(/\s+/g, " ").trim();
+          const existing = byUri.get(hit.uri);
+          if (!existing) {
+            byUri.set(hit.uri, { uri: hit.uri, pageIndex: i, label });
+          } else if (label && !existing.label.includes(label)) {
+            existing.label = existing.label ? `${existing.label} ${label}` : label;
+          }
+        }
+        results.push(...byUri.values());
       } finally {
         page.destroy();
       }
