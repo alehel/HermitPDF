@@ -1159,6 +1159,21 @@ const api = {
     return doc.countPages();
   },
 
+  /** Size of a page in points. */
+  getPageSize(
+    handle: number,
+    pageIndex: number
+  ): { widthPt: number; heightPt: number } {
+    const { doc } = getDoc(handle);
+    const page = doc.loadPage(pageIndex);
+    try {
+      const b = page.getBounds();
+      return { widthPt: b[2] - b[0], heightPt: b[3] - b[1] };
+    } finally {
+      page.destroy();
+    }
+  },
+
   renderPage(
     handle: number,
     pageIndex: number,
@@ -1792,6 +1807,92 @@ const api = {
     const img = new mupdf.Image(encoded);
     try {
       addImagePage(output, img, widthPt, heightPt);
+    } finally {
+      img.destroy();
+    }
+  },
+
+  /**
+   * Render a cropped region of a page, encode it, and append it to the build
+   * as a page of exactly `targetHeightPt` points — the book-scan wizard's
+   * unit of work. The crop is given as fractions of the page bounds
+   * (0,0 = top-left, 1,1 = bottom-right, matching what renderPage shows on
+   * screen). The output page's width follows from the crop's aspect ratio,
+   * so every exported page shares the same height while keeping its own
+   * proportions.
+   *
+   * As with the contrast export, everything stays worker-side: the crop is
+   * rendered by pointing a window-sized pixmap at the region of interest, so
+   * only the cropped pixels are ever rasterized or encoded.
+   */
+  imagePdfAddCroppedPage(
+    buildId: number,
+    handle: number,
+    pageIndex: number,
+    dpi: number,
+    crop: { x0: number; y0: number; x1: number; y1: number },
+    targetHeightPt: number,
+    encoding: { format: "png" } | { format: "jpeg"; quality: number }
+  ): void {
+    const output = getBuild(buildId);
+    const { doc, mupdf } = getDoc(handle);
+
+    const page = doc.loadPage(pageIndex);
+    let encoded: Uint8Array;
+    let cropWPt: number;
+    let cropHPt: number;
+    try {
+      const b = page.getBounds();
+      const pw = b[2] - b[0];
+      const ph = b[3] - b[1];
+      const region: Rect = [
+        b[0] + crop.x0 * pw,
+        b[1] + crop.y0 * ph,
+        b[0] + crop.x1 * pw,
+        b[1] + crop.y1 * ph,
+      ];
+      cropWPt = region[2] - region[0];
+      cropHPt = region[3] - region[1];
+
+      const zoom = dpi / 72;
+      const matrix = mupdf.Matrix.scale(zoom, zoom);
+      const bbox = mupdf.Rect.transform(region, matrix);
+      // Snap outward to whole pixels — a pixmap bbox must be integral, and
+      // rounding inward could clip a sliver of the requested region.
+      const ibbox: Rect = [
+        Math.floor(bbox[0]),
+        Math.floor(bbox[1]),
+        Math.ceil(bbox[2]),
+        Math.ceil(bbox[3]),
+      ];
+      const pixmap = new mupdf.Pixmap(
+        mupdf.ColorSpace.DeviceRGB,
+        ibbox,
+        /* alpha */ false
+      );
+      try {
+        pixmap.clear(255);
+        const device = new mupdf.DrawDevice(matrix, pixmap);
+        try {
+          page.run(device, mupdf.Matrix.identity);
+          device.close();
+        } finally {
+          device.destroy();
+        }
+        encoded =
+          encoding.format === "png"
+            ? pixmap.asPNG()
+            : pixmap.asJPEG(encoding.quality);
+      } finally {
+        pixmap.destroy();
+      }
+    } finally {
+      page.destroy();
+    }
+
+    const img = new mupdf.Image(encoded);
+    try {
+      addImagePage(output, img, (cropWPt / cropHPt) * targetHeightPt, targetHeightPt);
     } finally {
       img.destroy();
     }
