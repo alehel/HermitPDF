@@ -5,10 +5,12 @@
   "license": "AGPL-3.0-or-later",
   "scripts": {
     "dev": "next dev",
+    "prebuild": "node scripts/fetch-pdfcraft.mjs --required",
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "postinstall": "cp node_modules/mupdf/dist/mupdf-wasm.wasm public/mupdf-wasm.wasm"
+    "postinstall": "cp node_modules/mupdf/dist/mupdf-wasm.wasm public/mupdf-wasm.wasm && node scripts/fetch-pdfcraft.mjs",
+    "fetch:pdfcraft": "node scripts/fetch-pdfcraft.mjs --required"
   },
   "engines": {
     "node": ">=24"
@@ -18,7 +20,6 @@
     "@dnd-kit/core": "^6.3.1",
     "@dnd-kit/sortable": "^10.0.0",
     "@dnd-kit/utilities": "^3.2.2",
-    "@tanstack/react-virtual": "^3.13.23",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "comlink": "^4.4.2",

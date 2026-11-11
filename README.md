@@ -14,14 +14,14 @@ Available at [hermitpdf.com](https://hermitpdf.com). Docker container image for 
 
 ## Features
 
-Quick-start **Wizards** for common tasks (merge, split, extract images) and an advanced **Workbench** for multi-step editing:
+Quick-start **Wizards** for common tasks, and a full **Workbench** editor:
 
-- **Merge** — Combine pages from different PDFs
-- **Split** — Break documents into individual pages or remove unwanted pages
+- **Merge** — Combine PDFs and images into one document
+- **Split** — Break documents into individual pages or fixed-size chunks
 - **Rotate** — Rotate individual or all pages
-- **Reorder** — Drag-and-drop page and document reordering
 - **Extract images** — Pull embedded images from PDFs
-- **Export with metadata** — Set custom title, author, subject, and keywords
+- **Protect / Unlock**, **Compress**, **Bates numbering**, **Book Scan**, and more
+- **Workbench** — A full PDF reader and editor for multi-step work, powered by [PdfCraft](https://github.com/storytold/pdfcraft)
 
 ## Tech Stack
 
@@ -34,6 +34,7 @@ Quick-start **Wizards** for common tasks (merge, split, extract images) and an a
 **PDF Processing**
 - [mupdf](https://mupdf.com) — PDF rendering and manipulation (WASM)
 - [Comlink](https://github.com/GoogleChromeLabs/comlink) — Web Worker communication
+- [PdfCraft](https://github.com/storytold/pdfcraft) — The Workbench editor (Rust/WASM, embedded unmodified)
 
 ## Getting Started
 
@@ -43,6 +44,8 @@ npm run dev
 ```
 
 Open [http://localhost:3000](http://localhost:3000) to view the app.
+
+`npm install` also downloads the PdfCraft web build that powers the Workbench (about 34 MB, unpacked to ~75 MB) into `public/pdfcraft/`. The version is pinned and checked against a SHA-256 hash in [`scripts/fetch-pdfcraft.mjs`](scripts/fetch-pdfcraft.mjs). If that download fails, the install still succeeds, but `npm run build` won't. Run `npm run fetch:pdfcraft` to retry. Behind an HTTP proxy, set `NODE_USE_ENV_PROXY=1`.
 
 ### Other commands
 

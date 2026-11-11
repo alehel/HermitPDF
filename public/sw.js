@@ -13,6 +13,11 @@
  *   - RSC payloads (?_rsc=): network-first, cached per exact URL so
  *     prefetched client-side navigations keep working offline
  *   - /_next/static (content-hashed, immutable): cache-first
+ *   - /pdfcraft/*.js|wasm (the PdfCraft editor behind /workbench; content-
+ *     hashed by its build): downloaded once into the cache, then served from
+ *     it; the previous release's copies are pruned.
+ *     Not precached — it is ~65 MB, so it is only cached once /workbench is
+ *     actually opened.
  *   - other same-origin GETs: stale-while-revalidate
  */
 
@@ -220,7 +225,28 @@ async function handleRsc(request) {
 // matching: the body never varies with it, and Turbopack loads its worker
 // chunk with bootstrap config in the query (?params=...) while the crawl
 // caches the bare URL.
-async function cacheFirst(request) {
+// PdfCraft asset names carry a 16-hex-digit content hash, e.g.
+// pdfcraft-web-<hash>_bg.wasm or snippets/eframe-<hash>/inline0.js.
+const PDFCRAFT_HASHED = /^\/pdfcraft\/(.*?)-[0-9a-f]{16}([/_.].*)$/;
+
+/**
+ * After caching a new PdfCraft release's asset, drop the same asset from any
+ * earlier release, so an upgrade doesn't leave a stale ~59 MB wasm behind.
+ */
+async function prunePdfcraft(cache, pathname) {
+  const current = pathname.match(PDFCRAFT_HASHED);
+  if (!current) return;
+  for (const key of await cache.keys()) {
+    const keyPath = new URL(key.url).pathname;
+    const m = keyPath.match(PDFCRAFT_HASHED);
+    if (m && keyPath !== pathname && m[1] === current[1] && m[2] === current[2]) {
+      await cache.delete(key);
+    }
+  }
+}
+
+async function cacheFirst(event) {
+  const { request } = event;
   const opts = { ...MATCH_OPTS, ignoreSearch: true };
   const cached = await caches.match(request.url, opts);
   if (cached) {
@@ -240,12 +266,57 @@ async function cacheFirst(request) {
     const res = await fetch(request);
     if (res.ok && !res.redirected) {
       const cache = await caches.open(RUNTIME);
-      cache.put(new URL(request.url).pathname, res.clone());
+      const pathname = new URL(request.url).pathname;
+      // Keep the worker alive until the copy is stored; if it is stopped
+      // mid-stream, the teed body aborts for the page too.
+      event.waitUntil(cache.put(pathname, res.clone()).catch(() => {}));
     }
     return res;
   } catch {
     return Response.error();
   }
+}
+
+// Downloads in progress, by pathname, so the page's <link rel=preload> and
+// its own fetch of the same wasm share one download.
+const pdfcraftDownloads = new Map();
+
+/**
+ * PdfCraft's content-hashed assets: download once into the cache, then serve
+ * from it. Unlike cacheFirst this doesn't tee the network response — teeing a
+ * ~59 MB wasm into cache.put while the page streams it (twice, since the
+ * preload isn't reused under a service worker) aborts the page's load.
+ */
+async function pdfcraftAsset(event) {
+  const { request } = event;
+  const pathname = new URL(request.url).pathname;
+  const cache = await caches.open(RUNTIME);
+  let cached = await cache.match(pathname, MATCH_OPTS);
+  if (!cached) {
+    let download = pdfcraftDownloads.get(pathname);
+    if (!download) {
+      download = (async () => {
+        const res = await fetch(pathname);
+        if (!res.ok || res.redirected) throw new Error(`HTTP ${res.status}`);
+        await cache.put(pathname, res);
+        await prunePdfcraft(cache, pathname);
+      })().finally(() => pdfcraftDownloads.delete(pathname));
+      pdfcraftDownloads.set(pathname, download);
+    }
+    event.waitUntil(download.catch(() => {}));
+    try {
+      await download;
+      cached = await cache.match(pathname, MATCH_OPTS);
+    } catch {
+      // Couldn't store it (quota, server error): let the network answer.
+    }
+    if (!cached) return fetch(request).catch(() => Response.error());
+  }
+  return new Response(cached.body, {
+    status: cached.status,
+    statusText: cached.statusText,
+    headers: cached.headers,
+  });
 }
 
 async function staleWhileRevalidate(request) {
@@ -274,7 +345,9 @@ self.addEventListener("fetch", (event) => {
   } else if (url.searchParams.has("_rsc")) {
     event.respondWith(handleRsc(request));
   } else if (url.pathname.startsWith("/_next/static/")) {
-    event.respondWith(cacheFirst(request));
+    event.respondWith(cacheFirst(event));
+  } else if (PDFCRAFT_HASHED.test(url.pathname)) {
+    event.respondWith(pdfcraftAsset(event));
   } else {
     event.respondWith(staleWhileRevalidate(request));
   }

@@ -1,5 +1,6 @@
 "use client";
 
+import type { ReactNode } from "react";
 import Image from "next/image";
 import { useTranslations } from "next-intl";
 import { Link } from "@/i18n/navigation";
@@ -9,9 +10,11 @@ import { ThemeToggle } from "./ThemeToggle";
 
 interface AppHeaderProps {
   showBack?: boolean;
+  /** Extra content shown at the right, before the theme toggle. */
+  children?: ReactNode;
 }
 
-export function AppHeader({ showBack = true }: AppHeaderProps) {
+export function AppHeader({ showBack = true, children }: AppHeaderProps) {
   const t = useTranslations("common");
   const { theme } = useTheme();
 
@@ -45,7 +48,8 @@ export function AppHeader({ showBack = true }: AppHeaderProps) {
           priority
         />
       )}
-      <div className="ml-auto">
+      <div className="ml-auto flex items-center gap-4">
+        {children}
         <ThemeToggle title={t("toggleTheme")} />
       </div>
     </header>

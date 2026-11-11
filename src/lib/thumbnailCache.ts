@@ -9,9 +9,3 @@ export function setThumbnail(pageId: string, blobUrl: string): void {
   if (existing) URL.revokeObjectURL(existing);
   cache.set(pageId, blobUrl);
 }
-
-export function clearThumbnail(pageId: string): void {
-  const existing = cache.get(pageId);
-  if (existing) URL.revokeObjectURL(existing);
-  cache.delete(pageId);
-}
