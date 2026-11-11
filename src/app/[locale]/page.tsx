@@ -114,8 +114,11 @@ export default async function Home({
             height={192}
             className="pointer-events-none absolute -bottom-6 -left-8 w-32 rotate-[8deg] opacity-20 mix-blend-luminosity [mask-image:radial-gradient(closest-side,black_60%,transparent)] transition-transform duration-500 group-hover:scale-105 sm:-bottom-12 sm:-left-10 sm:w-48"
           />
-          <div className="relative min-w-0 flex-1">
+          {/* The credit follows the name in the DOM, so the link reads
+              "PdfCraft, By the ArtCraft team, …", but is shown above it. */}
+          <div className="relative flex min-w-0 flex-1 flex-col">
             <h2 className="text-lg font-medium sm:text-xl">{t("pdfcraft")}</h2>
+            <p className="order-first mb-0.5 text-[11px] uppercase tracking-[0.12em] text-white/80">{t("pdfcraftBy")}</p>
             <p className="mt-1 max-w-md text-sm text-white/80">{t("pdfcraftDesc")}</p>
           </div>
           <span className="relative hidden shrink-0 items-center gap-1.5 rounded-full bg-white px-4 py-2 text-sm font-medium text-[#8a011e] sm:flex">
