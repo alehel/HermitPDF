@@ -17,7 +17,6 @@ import {
   AttachIcon,
   LinkIcon,
   BookIcon,
-  WorkbenchIcon,
   ArrowRightIcon,
 } from "@/components/Icons";
 import { QuickActionCard } from "@/components/QuickActionCard";
@@ -100,22 +99,30 @@ export default async function Home({
           <div className="h-px flex-1 bg-border" />
         </div>
 
-        {/* Workbench CTA */}
-        <p className="mb-4 hidden text-sm text-muted-foreground sm:block">{t("workbenchHint")}</p>
+        {/* PdfCraft CTA — in PdfCraft's own red (its app colour, #b70228),
+            with its lion icon as a backdrop on the left, masked so the icon
+            tile's square edges fade into the gradient. */}
+        <p className="mb-4 hidden text-sm text-muted-foreground sm:block">{t("pdfcraftHint")}</p>
         <Link
           href="/workbench"
-          className="group flex w-full max-w-2xl items-center gap-4 rounded-2xl bg-sidebar p-4 text-left transition-all hover:shadow-xl sm:gap-6 sm:p-6"
+          className="group relative flex w-full max-w-2xl items-center gap-5 overflow-hidden rounded-2xl bg-gradient-to-br from-[#b70228] to-[#6e0118] p-5 pl-24 text-left text-white transition-shadow hover:shadow-xl sm:p-7 sm:pl-36"
         >
-          <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-primary text-primary-foreground sm:h-14 sm:w-14">
-            <WorkbenchIcon />
+          <Image
+            src="/pdfcraft-icon.png"
+            alt=""
+            width={192}
+            height={192}
+            className="pointer-events-none absolute -bottom-6 -left-8 w-32 rotate-[8deg] opacity-20 mix-blend-luminosity [mask-image:radial-gradient(closest-side,black_60%,transparent)] transition-transform duration-500 group-hover:scale-105 sm:-bottom-12 sm:-left-10 sm:w-48"
+          />
+          <div className="relative min-w-0 flex-1">
+            <h2 className="text-lg font-medium sm:text-xl">{t("pdfcraft")}</h2>
+            <p className="mt-1 max-w-md text-sm text-white/80">{t("pdfcraftDesc")}</p>
           </div>
-          <div className="flex-1">
-            <h2 className="text-base font-medium text-white sm:text-lg">
-              {t("workbench")}
-            </h2>
-            <p className="mt-1 text-sm text-white/50">{t("workbenchDesc")}</p>
-          </div>
-          <ArrowRightIcon size={20} className="text-white/40 transition-transform group-hover:translate-x-1" />
+          <span className="relative hidden shrink-0 items-center gap-1.5 rounded-full bg-white px-4 py-2 text-sm font-medium text-[#8a011e] sm:flex">
+            {t("pdfcraftLaunch")}
+            <ArrowRightIcon className="transition-transform group-hover:translate-x-0.5" />
+          </span>
+          <ArrowRightIcon size={20} className="relative shrink-0 text-white/70 sm:hidden" />
         </Link>
       </main>
 
