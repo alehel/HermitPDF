@@ -41,6 +41,8 @@ HermitPDF uses MuPDF unmodified, as published on npm (`mupdf@^1.27.0`). The exac
 
 HermitPDF serves the PdfCraft web build unmodified under `/pdfcraft/`. It is downloaded at install/build time rather than committed. The release's own `LICENSE-MIT`, `LICENSE-APACHE` and `NOTICE` files ship alongside it and stay available at `/pdfcraft/LICENSE-MIT`, `/pdfcraft/LICENSE-APACHE` and `/pdfcraft/NOTICE`. `NOTICE` lists the third-party material PdfCraft bundles, including its fonts (SIL Open Font License 1.1).
 
+`public/pdfcraft-icon.png` is PdfCraft's app icon (the 128 px render, `assets/app-icon/hicolor/128x128/apps/ai.storyteller.pdfcraft.png` upstream), used unmodified on the home page to link to the Workbench. It's contributor-original artwork, licensed MIT OR Apache-2.0 like the rest of PdfCraft.
+
 The ArtCraft name, wordmark and logos are trademarks of the ArtCraft Team. They aren't covered by PdfCraft's open-source license and appear only inside the unmodified PdfCraft app.
 
 The release also bundles the [ocrs](https://github.com/robertknight/ocrs) text-recognition models by Robert Knight (`/pdfcraft/models/`), licensed under CC-BY-SA-4.0. Their licence texts and attribution (`ATTRIBUTION.txt`) ship beside them.
