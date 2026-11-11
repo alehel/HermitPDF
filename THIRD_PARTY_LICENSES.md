@@ -53,4 +53,4 @@ The release also bundles the [ocrs](https://github.com/robertknight/ocrs) text-r
 
 Because HermitPDF is offered to users over a network, the AGPL-3.0 entitles every user interacting with the application to receive the Corresponding Source. The full source for HermitPDF — including the dependency manifest that pins MuPDF — is available at:
 
-<https://codeberg.org/alehel/hermitpdf>
+<https://github.com/alehel/HermitPDF>
