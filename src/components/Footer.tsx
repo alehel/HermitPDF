@@ -1,7 +1,7 @@
 "use client";
 
 import { useTranslations } from "next-intl";
-import { CodebergIcon } from "./Icons";
+import { GitHubIcon } from "./Icons";
 
 export function Footer() {
   const t = useTranslations("footer");
@@ -50,12 +50,12 @@ export function Footer() {
           </span>
         </div>
         <a
-          href="https://codeberg.org/alehel/hermitpdf"
+          href="https://github.com/alehel/HermitPDF"
           target="_blank"
           rel="noopener noreferrer"
           className="flex items-center gap-2 transition-colors hover:text-foreground"
         >
-          <CodebergIcon className="h-7 w-7" />
+          <GitHubIcon className="h-7 w-7" />
           <div className="flex flex-col text-xs">
             <span>{t("openSource")}</span>
             <span>AGPL-3.0</span>
