@@ -32,6 +32,21 @@ HermitPDF uses MuPDF unmodified, as published on npm (`mupdf@^1.27.0`). The exac
 
 ---
 
+## PdfCraft (web build)
+
+- **Project:** [PdfCraft](https://github.com/storytold/pdfcraft), the editor behind HermitPDF's `/workbench` route
+- **Copyright:** © 2026 ArtCraft Team and the PdfCraft contributors
+- **License:** MIT OR Apache-2.0, at the licensee's option
+- **Version:** v0.20.0, the unmodified `pdfcraft-web-0.20.0.zip` release asset, pinned by SHA-256 in [scripts/fetch-pdfcraft.mjs](./scripts/fetch-pdfcraft.mjs)
+
+HermitPDF serves the PdfCraft web build unmodified under `/pdfcraft/`. It is downloaded at install/build time rather than committed. The release's own `LICENSE-MIT`, `LICENSE-APACHE` and `NOTICE` files ship alongside it and stay available at `/pdfcraft/LICENSE-MIT`, `/pdfcraft/LICENSE-APACHE` and `/pdfcraft/NOTICE`. `NOTICE` lists the third-party material PdfCraft bundles, including its fonts (SIL Open Font License 1.1).
+
+The ArtCraft name, wordmark and logos are trademarks of the ArtCraft Team. They aren't covered by PdfCraft's open-source license and appear only inside the unmodified PdfCraft app.
+
+The release also bundles the [ocrs](https://github.com/robertknight/ocrs) text-recognition models by Robert Knight (`/pdfcraft/models/`), licensed under CC-BY-SA-4.0. Their licence texts and attribution (`ATTRIBUTION.txt`) ship beside them.
+
+---
+
 ## Source code availability (AGPL-3.0 §13)
 
 Because HermitPDF is offered to users over a network, the AGPL-3.0 entitles every user interacting with the application to receive the Corresponding Source. The full source for HermitPDF — including the dependency manifest that pins MuPDF — is available at:

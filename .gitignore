@@ -39,3 +39,7 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# PdfCraft web build, fetched by scripts/fetch-pdfcraft.mjs
+/public/pdfcraft/
+/public/.pdfcraft-tmp/

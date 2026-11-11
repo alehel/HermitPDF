@@ -38,15 +38,6 @@ function Icon({
   );
 }
 
-export function CloseIcon(props: IconProps) {
-  return (
-    <Icon size={16} {...props}>
-      <line x1="18" y1="6" x2="6" y2="18" />
-      <line x1="6" y1="6" x2="18" y2="18" />
-    </Icon>
-  );
-}
-
 export function MoonIcon(props: IconProps) {
   return (
     <Icon size={18} {...props}>
@@ -91,18 +82,6 @@ export function DownloadIcon(props: IconProps) {
   );
 }
 
-export function SplitIcon(props: IconProps) {
-  return (
-    <Icon size={16} strokeWidth={2} {...props}>
-      <path d="M16 3h5v5" />
-      <path d="M21 3l-7 7" />
-      <path d="M16 21h5v-5" />
-      <path d="M21 21l-7-7" />
-      <path d="M3 12h10" />
-    </Icon>
-  );
-}
-
 export function EyeIcon(props: IconProps) {
   return (
     <Icon size={16} {...props}>
@@ -141,34 +120,6 @@ export function RotateRightIcon(props: IconProps) {
   );
 }
 
-export function UndoIcon(props: IconProps) {
-  return (
-    <Icon size={18} strokeWidth={2} {...props}>
-      <path d="M3 7v6h6" />
-      <path d="M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6.69 3L3 13" />
-    </Icon>
-  );
-}
-
-export function RedoIcon(props: IconProps) {
-  return (
-    <Icon size={18} strokeWidth={2} {...props}>
-      <path d="M21 7v6h-6" />
-      <path d="M3 17a9 9 0 0 1 9-9 9 9 0 0 1 6.69 3L21 13" />
-    </Icon>
-  );
-}
-
-export function ImageIcon(props: IconProps) {
-  return (
-    <Icon size={16} strokeWidth={2} {...props}>
-      <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
-      <circle cx="8.5" cy="8.5" r="1.5" />
-      <polyline points="21 15 16 10 5 21" />
-    </Icon>
-  );
-}
-
 export function ChevronDownIcon(props: IconProps) {
   return (
     <Icon size={14} strokeWidth={2.5} {...props}>
@@ -177,15 +128,6 @@ export function ChevronDownIcon(props: IconProps) {
   );
 }
 
-
-export function FileIcon(props: IconProps) {
-  return (
-    <Icon size={48} strokeWidth={1} {...props}>
-      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-      <polyline points="14 2 14 8 20 8" />
-    </Icon>
-  );
-}
 
 export function MergeIcon(props: IconProps) {
   return (
@@ -440,16 +382,6 @@ export function PlusCircleIcon(props: IconProps) {
       <circle cx="12" cy="12" r="10" />
       <line x1="12" y1="8" x2="12" y2="16" />
       <line x1="8" y1="12" x2="16" y2="12" />
-    </Icon>
-  );
-}
-
-export function InfoIcon(props: IconProps) {
-  return (
-    <Icon size={16} strokeWidth={2} {...props}>
-      <circle cx="12" cy="12" r="10" />
-      <line x1="12" y1="11" x2="12" y2="16" />
-      <circle cx="12" cy="8" r="0.5" fill="currentColor" stroke="currentColor" />
     </Icon>
   );
 }

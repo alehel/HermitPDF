@@ -209,22 +209,6 @@ export async function releaseDocument(docId: string): Promise<void> {
   docMagic.delete(docId);
 }
 
-/**
- * Extract embedded images from a single page.
- * JPEG/JP2 images come out in their original bytes with color profiles;
- * other image data is decoded and re-encoded as PNG.
- */
-export async function extractImagesFromPage(
-  docId: string,
-  pageIndex: number
-): Promise<ExtractedImage[]> {
-  return trackOp(docId, (async () => {
-    const handle = await ensureLoaded(docId);
-    const result = await getWorker().extractImages(handle, [pageIndex]);
-    return result.images as ExtractedImage[];
-  })());
-}
-
 /** Extract embedded images from all pages of a document. */
 export async function extractImagesFromDocument(
   docId: string
